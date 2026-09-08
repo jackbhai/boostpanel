@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge, EmptyState, PageHead, Skeleton, Stat, toast } from '../../components/ui'
-import { Box, ClipboardList, Clock, Plug, Settings, ShoppingCart, Ticket, Users, Wallet } from '../../components/icons'
+import { Box, ClipboardList, Clock, Plug, Receipt, Settings, ShoppingCart, Ticket, Users, Wallet } from '../../components/icons'
 import { getAdminStats, getAllOrders } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
@@ -15,6 +15,7 @@ const MANAGE = [
   { to: '/admin/funds', icon: Wallet, label: 'Funds' },
   { to: '/admin/tickets', icon: Ticket, label: 'Tickets' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
+  { to: '/admin/logs', icon: Receipt, label: 'Logs' },
 ]
 
 const TOOLTIP_STYLE = { background: '#0D0D0D', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }

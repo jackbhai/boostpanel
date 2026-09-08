@@ -1,10 +1,15 @@
-import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, EmptyState, Modal, PageHead, Skeleton, toast } from '../../components/ui'
-import { Check, CheckCircle2, Clock, Eye, Receipt, User, X } from '../../components/icons'
 import { approveTopup, getAllTxns, listUsers, rejectTopup } from '../../lib/db'
 import { useStore } from '../../lib/store'
-import { money, timeAgo } from '../../lib/utils'
+import { money } from '../../lib/utils'
+import { downloadCSV } from '../../lib/csv'
+import {
+  Badge, Btn, EmptyState, Modal, PageHead,
+  SearchInput, Skeleton, toast,
+} from '../../components/ui'
+import { Check, Download, Eye, X } from '../../components/icons'
+
+const small = '!px-3 !py-1.5 text-[12px]'
 
 export default function AdminFunds() {
   const { currency } = useStore()
@@ -12,138 +17,92 @@ export default function AdminFunds() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('pending')
-  const [acting, setActing] = useState(null)
-  const [shot, setShot] = useState(null)
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(null)
+  const [shot, setShot] = useState('')
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([getAllTxns(), listUsers().catch(() => [])])
-      .then(([t, u]) => { setTxns(t); setUsers(u) })
-      .catch((e) => toast(e.message, 'error'))
-      .finally(() => setLoading(false))
-  }
-  useEffect(load, [])
-
-  const emailOf = (id) => users.find((u) => u.id === id)?.email || String(id).slice(0, 8)
-  const pending = useMemo(() => txns.filter((t) => t.status === 'pending' && t.type === 'credit'), [txns])
-  const history = useMemo(() => txns.filter((t) => t.status !== 'pending'), [txns])
-  const list = tab === 'pending' ? pending : history
-
-  const decide = async (txn, approve) => {
-    const action = approve ? 'APPROVE' : 'REJECT'
-    if (!window.confirm(`${action} ${money(txn.amount, currency())} for ${emailOf(txn.user_id)}?`)) return
-    setActing(txn.id)
+  const load = async () => {
     try {
-      if (approve) await approveTopup(txn)
-      else await rejectTopup(txn)
-      toast(approve ? 'Approved — balance added' : 'Request rejected')
-      load()
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setActing(null)
+      const [t, u] = await Promise.all([getAllTxns(), listUsers()])
+      setTxns(t || [])
+      setUsers(u || [])
+    } catch (e) {
+      toast(e.message, 'error')
     }
+    setLoading(false)
+  }
+  useEffect(() => { load() }, [])
+
+  const umap = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u.email])), [users])
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return txns.filter((t) => {
+      if (tab === 'pending' && !(t.type === 'credit' && t.status === 'pending')) return false
+      if (tab === 'deposits' && !(t.type === 'credit' && ['UPI', 'upi', 'Card', 'card', 'Crypto', 'crypto'].includes(t.method))) return false
+      if (!s) return true
+      return (umap[t.user_id] || '').toLowerCase().includes(s) || (t.txn_ref || '').toLowerCase().includes(s) || String(t.id).includes(s)
+    })
+  }, [txns, tab, q, umap])
+
+  const pendCount = txns.filter((t) => t.type === 'credit' && t.status === 'pending').length
+
+  const act = async (id, fn, label) => {
+    setBusy(id)
+    try {
+      const r = await fn(id)
+      toast(label + (r?.credited ? ` — credited ${money(r.credited, currency())} (incl. bonus)` : ''))
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+    setBusy(null)
+    load()
   }
 
+  if (loading) return <Skeleton lines={5} />
   return (
     <div>
-      <PageHead title="Funds" sub="Verify screenshots, then approve." />
-
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={() => setTab('pending')}
-          className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'pending' ? 'grad-btn text-white' : 'card text-white/55'}`}
-        >
-          <Clock size={15} /> Pending ({pending.length})
-        </button>
-        <button
-          onClick={() => setTab('history')}
-          className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'history' ? 'grad-btn text-white' : 'card text-white/55'}`}
-        >
-          <Receipt size={15} /> History ({history.length})
-        </button>
-      </div>
-
-      <div className="mt-3 space-y-2.5">
-        {loading && <Skeleton lines={4} />}
-        {!loading && list.length === 0 && (
-          <EmptyState icon={tab === 'pending' ? <CheckCircle2 size={40} /> : <Receipt size={40} />} title={tab === 'pending' ? 'All caught up!' : 'No history yet'} hint={tab === 'pending' ? 'No pending fund requests.' : ''} />
-        )}
-        {list.map((t) => (
-          <div key={t.id} className="card p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex min-w-0 items-center gap-1.5 truncate text-[13px] font-bold text-white">
-                <User size={14} className="shrink-0 text-white/50" /> <span className="truncate">{emailOf(t.user_id)}</span>
-              </p>
-              <Badge status={t.status} />
-            </div>
-            <div className="mt-2 flex items-end justify-between gap-2">
-              <div className="text-[12px] text-white/50">
-                <p>{t.method}{t.txn_ref ? ` · UTR: ` : ''}{t.txn_ref && <span className="font-mono font-bold text-violet-200">{t.txn_ref}</span>}</p>
-                <p className="mt-0.5 text-[11px] text-white/35">{t.type} · {timeAgo(t.created_at)}</p>
-                {t.note && <p className="mt-0.5 text-[11px] text-white/45">{t.note}</p>}
-              </div>
-              <p className={`shrink-0 text-xl font-extrabold ${t.type === 'credit' ? 'text-emerald-300' : 'text-white'}`}>
-                {t.type === 'credit' ? '+' : '−'}{money(t.amount, currency())}
-              </p>
-            </div>
-            {t.screenshot_url && (
-              <button onClick={() => setShot(t)} className="mt-2.5 block w-full overflow-hidden rounded-xl border border-white/10">
-                <img src={t.screenshot_url} alt="payment proof" className="max-h-56 w-full object-contain bg-black/40" loading="lazy" />
-                <span className="flex items-center justify-center gap-1.5 bg-white/5 py-1.5 text-[12px] font-semibold text-violet-300">
-                  <Eye size={13} /> Tap to verify full screenshot
-                </span>
-              </button>
-            )}
-            {t.status === 'pending' && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  disabled={acting === t.id}
-                  onClick={() => decide(t, true)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
-                >
-                  <Check size={15} /> Approve
-                </button>
-                <button
-                  disabled={acting === t.id}
-                  onClick={() => decide(t, false)}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50"
-                >
-                  <X size={15} /> Reject
-                </button>
-              </div>
-            )}
-          </div>
+      <PageHead title="Funds" sub="Verify screenshots + UTR, then approve. Credit runs server-side." />
+      <div className="mb-4 flex flex-wrap gap-2">
+        {[['pending', `Pending approval (${pendCount})`], ['deposits', 'All deposits'], ['all', 'Full ledger']].map(([v, l]) => (
+          <button key={v} onClick={() => setTab(v)} className={`rounded-xl px-4 py-2 text-[13px] font-bold transition ${tab === v ? 'grad-btn text-white' : 'bg-white/5 text-white/50 hover:text-white'}`}>{l}</button>
         ))}
+        <div className="min-w-[180px] flex-1"><SearchInput value={q} onChange={setQ} placeholder="Search user, UTR, id…" /></div>
+        <Btn variant="ghost" onClick={() => downloadCSV('transactions.csv', rows.map((t) => ({ id: t.id, user: umap[t.user_id] || t.user_id, type: t.type, amount: t.amount, method: t.method || '', utr: t.txn_ref || '', status: t.status, note: t.note || '', created: t.created_at })))} className={small}><Download size={14} />CSV</Btn>
       </div>
-
-      <AnimatePresence>
-        {shot && (
-          <Modal title={`Proof · ${money(shot.amount, currency())}`} onClose={() => setShot(null)} wide>
-            <img src={shot.screenshot_url} alt="proof full" className="max-h-[60vh] w-full rounded-xl object-contain bg-black/40" />
-            <div className="mt-3 rounded-xl bg-white/5 p-3 text-[13px] text-white/70">
-              <p className="flex items-center gap-1.5"><User size={13} /> {emailOf(shot.user_id)}</p>
-              <p className="mt-0.5">UTR: <span className="font-mono font-bold text-violet-200">{shot.txn_ref || '—'}</span> · {shot.method}</p>
-            </div>
-            {shot.status === 'pending' && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button
-                  onClick={async () => { setShot(null); await decide(shot, true) }}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white"
-                >
-                  <Check size={15} /> Approve
-                </button>
-                <button
-                  onClick={async () => { setShot(null); await decide(shot, false) }}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white"
-                >
-                  <X size={15} /> Reject
-                </button>
+      {rows.length === 0 ? <EmptyState title="Nothing here" /> : (
+        <div className="space-y-2">
+          {rows.map((t) => (
+            <div key={t.id} className="card p-3.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-white/35">#{t.id}</span>
+                <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-white">{umap[t.user_id] || t.user_id}</span>
+                <Badge status={t.status} />
+                <span className={`text-sm font-extrabold ${t.type === 'credit' ? 'text-emerald-300' : 'text-rose-300'}`}>
+                  {t.type === 'credit' ? '+' : '−'}{money(t.amount, currency())}
+                </span>
               </div>
-            )}
-          </Modal>
-        )}
-      </AnimatePresence>
+              <p className="mt-1 text-xs text-white/45">
+                {t.method || t.type}{t.txn_ref ? ` · ${t.txn_ref}` : ''} · {new Date(t.created_at).toLocaleString()}
+              </p>
+              {t.note && <p className="mt-0.5 text-xs text-white/40">{t.note}</p>}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {t.screenshot_url && <Btn variant="subtle" onClick={() => setShot(t.screenshot_url)} className={small}><Eye size={13} />Screenshot</Btn>}
+                {t.type === 'credit' && t.status === 'pending' && (
+                  <>
+                    <Btn onClick={() => act(t.id, approveTopup, `Deposit #${t.id} approved`)} loading={busy === t.id} className={small}><Check size={13} />Approve + credit</Btn>
+                    <Btn variant="danger" onClick={() => act(t.id, rejectTopup, `Deposit #${t.id} rejected`)} loading={busy === t.id} className={small}><X size={13} />Reject</Btn>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {shot && (
+        <Modal title="Payment screenshot" onClose={() => setShot('')}>
+          <img src={shot} alt="Payment proof" className="max-h-[70vh] w-full rounded-xl object-contain" />
+        </Modal>
+      )}
     </div>
   )
 }

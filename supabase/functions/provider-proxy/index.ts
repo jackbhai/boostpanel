@@ -59,8 +59,8 @@ Deno.serve(async (req: Request) => {
     // Who is calling? (their JWT is forwarded automatically by supabase-js)
     const jwt = (req.headers.get('Authorization') || '').replace('Bearer ', '')
     if (!jwt) return json({ error: 'Missing auth token' }, 401)
-    const me = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: `Bearer ${jwt}` } } })
-    const { data: { user } } = await me.auth.getUser()
+    const me = createClient(supabaseUrl, serviceKey)
+    const { data: { user } } = await me.auth.getUser(jwt)
     if (!user) return json({ error: 'Invalid session — please log in again' }, 401)
 
     // Server client (bypasses RLS) for trusted reads/writes
@@ -224,6 +224,35 @@ Deno.serve(async (req: Request) => {
       }
       const updated = results.filter((r) => !r.error && !r.skipped).length
       return json({ updated, results })
+    }
+
+    /* ============ resync (admin): re-apply stored margins on fresh provider rates ============ */
+    if (action === 'resync') {
+      needAdmin()
+      const { data: prov } = await db.from('providers').select('*').eq('id', body.provider_id).single()
+      if (!prov) throw new Error('Provider not found')
+      let remote: any
+      try {
+        remote = await providerCall(prov.api_url, prov.api_key, 'services')
+      } catch {
+        throw new Error('Provider unreachable')
+      }
+      const list = Array.isArray(remote) ? remote : (remote?.services || [])
+      const cost: Record<string, number> = {}
+      list.forEach((s: any) => { cost[String(s.service ?? s.id)] = Number(s.rate ?? 0) })
+      const { data: locals } = await db.from('services').select('id,provider_service_id,margin_pct').eq('provider_id', prov.id)
+      let updated = 0
+      const changes: any[] = []
+      for (const l of locals || []) {
+        const c = cost[String(l.provider_service_id)]
+        if (c === undefined || !(c > 0)) continue
+        const m = Math.min(10000, Math.max(-99, Number(l.margin_pct || 0)))
+        const nr = Math.round(((c * (100 + m)) / 100) * 100) / 100
+        await db.from('services').update({ rate: nr, cost_rate: c }).eq('id', l.id)
+        updated++
+        if (changes.length < 50) changes.push({ id: l.id, cost: c, rate: nr })
+      }
+      return json({ ok: true, provider: prov.name, checked: (locals || []).length, updated, remote_count: list.length, changes })
     }
 
     /* ============ refill / cancel (owner or admin) ============ */

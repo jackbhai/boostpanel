@@ -10,7 +10,7 @@ const EMPTY_SVC = {
   id: '', category_id: '', name: '', platform: '', type: '',
   rate: '', min_qty: 100, max_qty: 100000, avg_time: '0-1 hr',
   refill_days: 0, quality: 'High', active: true, description: '',
-  provider_id: '', provider_service_id: '',
+  provider_id: '', provider_service_id: '', margin_pct: 0, cost_rate: 0,
 }
 
 export default function AdminServices() {
@@ -21,6 +21,7 @@ export default function AdminServices() {
   const [svcForm, setSvcForm] = useState(null)
   const [catForm, setCatForm] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [bulk, setBulk] = useState({ provider_id: '', margin: '' })
 
   useEffect(() => {
     listProviders().then(setProviders).catch(() => {})
@@ -47,6 +48,8 @@ export default function AdminServices() {
         id: Number(svcForm.id),
         category_id: Number(svcForm.category_id),
         rate: Number(svcForm.rate),
+        margin_pct: Number(svcForm.margin_pct || 0),
+        cost_rate: Number(svcForm.cost_rate || 0),
         min_qty: Number(svcForm.min_qty),
         max_qty: Number(svcForm.max_qty),
         refill_days: Number(svcForm.refill_days),
@@ -80,6 +83,28 @@ export default function AdminServices() {
       refreshCatalog()
     } catch (err) {
       toast(err.message, 'error')
+    }
+  }
+
+  /* ---------- bulk margin ---------- */
+
+  const applyBulkMargin = async () => {
+    const m = Number(bulk.margin)
+    if (!bulk.provider_id) return toast('Choose a provider', 'error')
+    if (!bulk.margin.toString().trim() || isNaN(m)) return toast('Enter margin %', 'error')
+    const targets = services.filter((s) => String(s.provider_id) === String(bulk.provider_id) && Number(s.cost_rate) > 0)
+    if (!targets.length) return toast('No mapped services with a stored cost rate', 'error')
+    setBusy(true)
+    try {
+      for (const s of targets) {
+        await saveService({ ...s, margin_pct: m, rate: Math.round(Number(s.cost_rate) * (1 + m / 100) * 100) / 100 })
+      }
+      toast(`Margin ${m}% applied to ${targets.length} services.`)
+      refreshCatalog()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -138,6 +163,17 @@ export default function AdminServices() {
       {tab === 'services' && (
         <>
           <div className="mt-3"><SearchInput value={q} onChange={setQ} placeholder="Search services…" /></div>
+          <div className="card mt-2 p-3">
+            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-white/40">Bulk margin — one provider, all its services</p>
+            <div className="flex gap-2">
+              <Select value={bulk.provider_id} onChange={(e) => setBulk({ ...bulk, provider_id: e.target.value })}>
+                <option value="">Provider…</option>
+                {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+              <Input type="number" placeholder="Margin %" value={bulk.margin} onChange={(e) => setBulk({ ...bulk, margin: e.target.value })} className="max-w-[130px]" />
+              <Btn onClick={applyBulkMargin} loading={busy} className="!px-3.5 text-[13px]">Apply</Btn>
+            </div>
+          </div>
           <div className="mt-3 space-y-2">
             {list.length === 0 && <EmptyState icon={<ClipboardList size={40} />} title="No services" />}
             {list.map((s) => (
@@ -154,6 +190,7 @@ export default function AdminServices() {
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/50">
                   <span>{catName(s.category_id)}</span>
                   <span className="font-bold text-emerald-300">{money(s.rate, currency())}/1k</span>
+                  {s.provider_id ? <span className="text-sky-300/80">cost {money(s.cost_rate || 0, currency())} + {s.margin_pct || 0}%</span> : <span className="text-white/30">manual</span>}
                   <span>{Number(s.min_qty).toLocaleString()}–{Number(s.max_qty).toLocaleString()}</span>
                   <Badge status={s.active === false ? 'closed' : 'active'}>{s.active === false ? 'hidden' : 'live'}</Badge>
                   {s.provider_id && <Badge status="processing"><Plug size={10} /> {provName(s.provider_id)}:{s.provider_service_id}</Badge>}
@@ -214,6 +251,14 @@ export default function AdminServices() {
                 <Field label="Rate /1k"><Input type="number" step="0.01" value={svcForm.rate} onChange={(e) => setSvcForm({ ...svcForm, rate: e.target.value })} required /></Field>
                 <Field label="Min"><Input type="number" value={svcForm.min_qty} onChange={(e) => setSvcForm({ ...svcForm, min_qty: e.target.value })} required /></Field>
                 <Field label="Max"><Input type="number" value={svcForm.max_qty} onChange={(e) => setSvcForm({ ...svcForm, max_qty: e.target.value })} required /></Field>
+              </div>
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+                <p className="mb-2 text-[12px] font-bold text-emerald-200">Margin control — your profit on this service</p>
+                <div className="grid grid-cols-3 items-end gap-2">
+                  <Field label="Cost /1k"><Input type="number" step="0.01" value={svcForm.cost_rate} onChange={(e) => setSvcForm({ ...svcForm, cost_rate: e.target.value })} /></Field>
+                  <Field label="Margin %"><Input type="number" step="0.1" value={svcForm.margin_pct} onChange={(e) => setSvcForm({ ...svcForm, margin_pct: e.target.value })} /></Field>
+                  <Btn type="button" variant="success" onClick={() => setSvcForm({ ...svcForm, rate: (Math.max(0, Number(svcForm.cost_rate || 0) * (1 + Number(svcForm.margin_pct || 0) / 100) * 100) / 100).toFixed(2) })} className="!px-2 text-[12px]">Apply to rate</Btn>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Avg start time"><Input placeholder="0-1 hr" value={svcForm.avg_time} onChange={(e) => setSvcForm({ ...svcForm, avg_time: e.target.value })} /></Field>

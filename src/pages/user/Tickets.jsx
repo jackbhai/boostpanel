@@ -100,6 +100,14 @@ export function Tickets() {
   )
 }
 
+const CANNED = [
+  'Thanks for contacting support. We are checking this and will update you shortly.',
+  'Your order has been forwarded to the provider. Please allow the start time mentioned on the service.',
+  'We have refilled your order. Drops (if any) will recover within 24 hours.',
+  'Your deposit has been approved and balance credited. Thank you!',
+  'This service needs a public link. Please make the target public and reply here.',
+]
+
 /* ------------------------------ Detail ------------------------------ */
 
 export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChange }) {
@@ -197,6 +205,15 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
         })}
       </div>
 
+      {role === 'admin' && ticket.status !== 'closed' && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {CANNED.map((c) => (
+            <button key={c.slice(0, 24)} onClick={() => setReply(c)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-left text-[11px] text-white/60 hover:border-violet-500/40 hover:text-white">
+              {c.slice(0, 44)}…
+            </button>
+          ))}
+        </div>
+      )}
       {ticket.status !== 'closed' ? (
         <form onSubmit={send} className="sticky bottom-24 mt-4 flex gap-2">
           <input

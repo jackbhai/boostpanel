@@ -110,3 +110,14 @@ supabase/functions/provider-proxy/ ← server-side provider bridge (Deno)
 Built for **learning full-stack development**. Real SMM panels sell fake engagement,
 which violates Instagram/YouTube/TikTok terms and can get accounts banned. Build skills
 with this project — grow real accounts with real content.
+
+## Security model (v3+)
+
+- **All money mutations run server-side** in the `secure` Edge Function (orders, refunds,
+  topups, balance, admin mutations). The database revokes direct client writes on
+  `orders` / `transactions` / `profiles.balance` — price tampering via DevTools, terminal
+  or direct API calls is impossible.
+- Deploy all three functions:
+  `npx supabase functions deploy secure|provider-proxy` and
+  `npx supabase functions deploy public-api --no-verify-jwt` (key-auth reseller API).
+- Apply `supabase/migration_v3.sql` (margins, discounts, limits, favorites, audit log).

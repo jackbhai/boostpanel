@@ -9,7 +9,7 @@ import { timeAgo } from '../../lib/utils'
 const EMPTY = {
   site_name: '', currency: '₹', min_deposit: 100, support_email: '', notice: '',
   upi_id: '', upi_payee: '', pay_upi: true, pay_card: false, pay_crypto: false,
-  card_info: '', crypto_info: '',
+  card_info: '', crypto_info: '', signup_bonus: 0, deposit_bonus_pct: 0, maintenance: false,
 }
 
 export default function AdminSettings() {
@@ -28,7 +28,7 @@ export default function AdminSettings() {
     e.preventDefault()
     setBusy(true)
     try {
-      await saveSettings({ ...form, min_deposit: Number(form.min_deposit) })
+      await saveSettings({ ...form, min_deposit: Number(form.min_deposit), signup_bonus: Number(form.signup_bonus) || 0, deposit_bonus_pct: Number(form.deposit_bonus_pct) || 0 })
       await refreshSettings()
       toast('Settings saved!')
     } catch (err) {
@@ -92,6 +92,17 @@ export default function AdminSettings() {
         <Field label="Global notice">
           <Input placeholder="e.g. Maintenance at midnight" value={form.notice} onChange={(e) => setForm({ ...form, notice: e.target.value })} />
         </Field>
+
+        <p className="flex items-center gap-1.5 pt-1 text-sm font-bold text-white"><SettingsIcon size={15} /> Growth & Safety</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Signup bonus (free credit)">
+            <Input type="number" min="0" value={form.signup_bonus} onChange={(e) => setForm({ ...form, signup_bonus: e.target.value })} />
+          </Field>
+          <Field label="Deposit bonus %">
+            <Input type="number" min="0" max="100" value={form.deposit_bonus_pct} onChange={(e) => setForm({ ...form, deposit_bonus_pct: e.target.value })} />
+          </Field>
+        </div>
+        <Toggle k="maintenance" label="Maintenance mode (only admins can use panel)" />
 
         <p className="flex items-center gap-1.5 pt-1 text-sm font-bold text-white"><Wallet size={15} /> Payments (UPI)</p>
         <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 text-[12px] leading-relaxed text-white/60">

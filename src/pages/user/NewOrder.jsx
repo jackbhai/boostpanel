@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, Select, toast } from '../../components/ui'
-import { AlertCircle, BadgeCheck, Clock, Info, Plug, RefreshCcw, Wallet } from '../../components/icons'
+import { AlertCircle, BadgeCheck, Clock, Info, Percent, Plug, RefreshCcw, Wallet } from '../../components/icons'
 import { placeOrder } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { calcCharge, money } from '../../lib/utils'
@@ -12,6 +12,8 @@ export default function NewOrder() {
   const [serviceId, setServiceId] = useState('')
   const [link, setLink] = useState('')
   const [qty, setQty] = useState('')
+  const [runs, setRuns] = useState('')
+  const [intervalMins, setIntervalMins] = useState('')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
@@ -21,7 +23,8 @@ export default function NewOrder() {
     [services, catId],
   )
   const service = useMemo(() => services.find((s) => String(s.id) === String(serviceId)), [services, serviceId])
-  const charge = service && qty ? calcCharge(service.rate, Number(qty) || 0) : 0
+  const disc = Math.min(100, Math.max(0, Number(profile?.discount_pct || 0)))
+  const charge = service && qty ? Math.round(calcCharge(service.rate, Number(qty) || 0) * (100 - disc)) / 100 : 0
   const qtyNum = Number(qty) || 0
   const qtyValid = service && Number.isInteger(qtyNum) && qtyNum >= service.min_qty && qtyNum <= service.max_qty
   const affordable = charge <= Number(profile?.balance || 0)
@@ -31,11 +34,13 @@ export default function NewOrder() {
     if (!service) return toast('Please select a service', 'error')
     setBusy(true)
     try {
-      const { order, forwarded } = await placeOrder(user.id, service, link.trim(), qtyNum)
+      const { order, forwarded, provider_error } = await placeOrder(user.id, service, link.trim(), qtyNum, { runs: Number(runs) || 0, interval_mins: Number(intervalMins) || 0 })
       await refreshProfile()
       toast(forwarded
         ? `Order #${order.id} placed and sent to provider`
-        : `Order #${order.id} placed. ${money(order.charge, currency())} deducted.`)
+        : provider_error
+          ? `Order #${order.id} placed. ${provider_error}`
+          : `Order #${order.id} placed. ${money(order.charge, currency())} deducted.`)
       navigate('/orders')
     } catch (err) {
       toast(err.message, 'error')
@@ -112,6 +117,21 @@ export default function NewOrder() {
           />
         </Field>
 
+        {service?.provider_id ? (
+          <div className="card space-y-3 p-4">
+            <p className="flex items-center gap-1.5 text-[13px] font-bold text-white"><Clock size={14} className="text-sky-300" /> Drip-feed <span className="font-normal text-white/40">(optional — gradual delivery)</span></p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Runs (portions)">
+                <Input type="number" min="0" max="100" placeholder="e.g. 10" value={runs} onChange={(e) => setRuns(e.target.value)} />
+              </Field>
+              <Field label="Interval (minutes)">
+                <Input type="number" min="0" max="1440" placeholder="e.g. 60" value={intervalMins} onChange={(e) => setIntervalMins(e.target.value)} />
+              </Field>
+            </div>
+            {Number(runs) > 0 && <p className="text-[12px] text-white/45">Quantity will be split into {runs} runs, {intervalMins || 0} min apart.</p>}
+          </div>
+        ) : null}
+
         {/* Live bill */}
         <div className="card flex items-center justify-between p-4">
           <div>
@@ -119,6 +139,7 @@ export default function NewOrder() {
             <p className={`text-2xl font-extrabold ${qtyValid ? 'text-white' : 'text-white/30'}`}>
               {money(qtyValid ? charge : 0, currency())}
             </p>
+            {disc > 0 && <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-emerald-300"><Percent size={11} /> {disc}% account discount applied</p>}
           </div>
           <div className="text-right">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Your balance</p>

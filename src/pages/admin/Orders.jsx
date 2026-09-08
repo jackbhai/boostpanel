@@ -1,189 +1,215 @@
-import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Skeleton, toast } from '../../components/ui'
-import { Box, Plug, RefreshCw, User, Wallet } from '../../components/icons'
-import { getAllOrders, listUsers, setOrderStatus, syncAllProviderOrders, syncOrder } from '../../lib/db'
-import { serviceById, useStore } from '../../lib/store'
-import { money, shortId, timeAgo } from '../../lib/utils'
+import {
+  bridge, cancelOrder, getAllOrders, getCatalog, listUsers,
+  manualOrder, refillOrder, setOrderStatus,
+} from '../../lib/db'
+import { useStore } from '../../lib/store'
+import { money } from '../../lib/utils'
+import { downloadCSV } from '../../lib/csv'
+import {
+  Badge, Btn, EmptyState, Input, Modal, PageHead,
+  SearchInput, Select, Skeleton, toast,
+} from '../../components/ui'
+import { Check, Download, LinkIcon, Pencil, Plus, RefreshCw, X } from '../../components/icons'
 
 const STATUSES = ['pending', 'in_progress', 'processing', 'completed', 'partial', 'canceled', 'refunded']
-const FILTERS = ['all', ...STATUSES]
+const small = '!px-3 !py-1.5 text-[12px]'
 
 export default function AdminOrders() {
-  const { services, currency } = useStore()
+  const { currency } = useStore()
   const [orders, setOrders] = useState([])
   const [users, setUsers] = useState([])
+  const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
+  const [st, setSt] = useState('all')
+  const [sel, setSel] = useState(new Set())
+  const [busy, setBusy] = useState('')
   const [edit, setEdit] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [syncOne, setSyncOne] = useState(null)
+  const [editSt, setEditSt] = useState('')
+  const [editRem, setEditRem] = useState('')
+  const [manual, setManual] = useState(false)
+  const [m, setM] = useState({ user_id: '', service_id: '', link: '', quantity: '' })
 
-  const load = () => {
-    setLoading(true)
-    Promise.all([getAllOrders(), listUsers().catch(() => [])])
-      .then(([o, u]) => { setOrders(o); setUsers(u) })
-      .catch((e) => toast(e.message, 'error'))
-      .finally(() => setLoading(false))
-  }
-  useEffect(load, [])
-
-  const emailOf = (id) => users.find((u) => u.id === id)?.email || String(id).slice(0, 8)
-
-  const list = useMemo(() => orders.filter((o) => {
-    if (filter !== 'all' && o.status !== filter) return false
-    if (q) {
-      const svc = serviceById(services, o.service_id)
-      const hay = `${o.id} ${o.link} ${svc?.name || ''} ${emailOf(o.user_id)} ${o.provider_order_id || ''}`.toLowerCase()
-      if (!hay.includes(q.toLowerCase())) return false
-    }
-    return true
-  }), [orders, filter, q, services, users])
-
-  const save = async () => {
-    setBusy(true)
+  const load = async () => {
     try {
-      await setOrderStatus(edit._orig, edit.status, edit.remains)
-      toast(edit.status === 'canceled' || edit.status === 'partial' || edit.status === 'refunded'
-        ? 'Status saved + auto-refund issued'
-        : 'Order status updated!')
-      setEdit(null)
-      load()
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setBusy(false)
+      const [o, u, c] = await Promise.all([getAllOrders(), listUsers(), getCatalog()])
+      setOrders(o || [])
+      setUsers(u || [])
+      setServices(c.services || [])
+    } catch (e) {
+      toast(e.message, 'error')
     }
+    setLoading(false)
   }
+  useEffect(() => { load() }, [])
 
-  const syncSingle = async (o) => {
-    setSyncOne(o.id)
+  const umap = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u.email])), [users])
+  const smap = useMemo(() => Object.fromEntries(services.map((s) => [s.id, s.name])), [services])
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return orders.filter((o) => {
+      if (st !== 'all' && o.status !== st) return false
+      if (!s) return true
+      return String(o.id).includes(s) || (umap[o.user_id] || '').toLowerCase().includes(s) ||
+        (o.link || '').toLowerCase().includes(s) || (o.provider_order_id || '').toLowerCase().includes(s) ||
+        (smap[o.service_id] || '').toLowerCase().includes(s)
+    })
+  }, [orders, q, st, umap, smap])
+
+  const toggle = (id) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  const run = async (key, fn) => {
+    setBusy(key)
     try {
-      const res = await syncOrder(o.id)
-      const r = res.results?.[0]
-      toast(r?.error ? `Sync: ${r.error}` : `Synced: ${r?.status || 'ok'}`)
-      load()
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setSyncOne(null)
+      toast(await fn())
+    } catch (e) {
+      toast(e.message, 'error')
     }
+    setBusy('')
+    load()
   }
 
-  const syncAll = async () => {
-    setSyncing(true)
-    try {
-      const res = await syncAllProviderOrders()
-      toast(`Synced ${res.updated ?? 0} provider orders`)
-      load()
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setSyncing(false)
-    }
+  const doSync = (ids) => run('sync', async () => {
+    const r = await bridge({ action: 'sync', order_ids: ids })
+    setSel(new Set())
+    return `Synced ${r?.synced ?? r?.updated ?? 0} orders with providers.`
+  })
+  const doBulk = (status) => run('bulk', async () => {
+    const ids = [...sel]
+    for (const id of ids) await setOrderStatus(id, status)
+    setSel(new Set())
+    return `${ids.length} orders set to ${status}.`
+  })
+  const doCancel = (id) => run(`c${id}`, async () => {
+    const r = await cancelOrder(id)
+    return `Order #${id} cancelled + refunded. ${r?.message || ''}`
+  })
+  const doRefill = (id) => run(`r${id}`, async () => {
+    await refillOrder(id)
+    return `Refill sent for order #${id}.`
+  })
+  const doSaveEdit = () => run('edit', async () => {
+    const r = await setOrderStatus(edit.id, editSt, editRem === '' ? null : Number(editRem))
+    setEdit(null)
+    return `Order #${edit.id} updated${r?.refunded ? ` + refunded ${money(r.refunded, currency())}` : ''}.`
+  })
+  const doManual = () => run('manual', async () => {
+    const r = await manualOrder({ user_id: m.user_id, service_id: Number(m.service_id), link: m.link.trim(), quantity: Number(m.quantity) })
+    setManual(false)
+    setM({ user_id: '', service_id: '', link: '', quantity: '' })
+    return `Order #${r.order.id} created (${money(r.charge, currency())})${r.forwarded ? ' + forwarded' : ''}.`
+  })
+  const doExport = () => {
+    downloadCSV('orders.csv', rows.map((o) => ({
+      id: o.id, user: umap[o.user_id] || o.user_id, service: smap[o.service_id] || o.service_id,
+      link: o.link, quantity: o.quantity, charge: o.charge, status: o.status,
+      provider_order: o.provider_order_id || '', created: o.created_at,
+    })))
+    toast(`Exported ${rows.length} orders to CSV.`)
   }
 
-  const providerLive = orders.filter((o) => o.provider_id && ['pending', 'in_progress', 'processing'].includes(o.status)).length
-
+  if (loading) return <Skeleton lines={5} />
   return (
     <div>
-      <PageHead
-        title="Orders"
-        sub={`${orders.length} total`}
-        right={
-          <Btn onClick={syncAll} loading={syncing} className="!px-3 !py-2 text-[12px]" disabled={!providerLive}>
-            <RefreshCw size={14} /> Sync ({providerLive})
-          </Btn>
-        }
-      />
-      <SearchInput value={q} onChange={setQ} placeholder="Search id, user, link, provider id…" />
-      <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1">
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold capitalize ${
-              filter === f ? 'grad-btn text-white' : 'border border-white/10 bg-white/5 text-white/55'
-            }`}
-          >
-            {f.replace('_', ' ')}
-          </button>
-        ))}
+      <PageHead title="Orders" sub={`${orders.length} total · all status changes + refunds run server-side.`} />
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+        <div className="flex-1"><SearchInput value={q} onChange={setQ} placeholder="Search id, user, service, link, provider id…" /></div>
+        <Select value={st} onChange={(e) => setSt(e.target.value)} className="sm:w-44">
+          <option value="all">All statuses</option>
+          {STATUSES.map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
+        </Select>
       </div>
-
-      <div className="mt-4 space-y-2.5">
-        {loading && <Skeleton lines={4} />}
-        {!loading && list.length === 0 && <EmptyState icon={<Box size={40} />} title="No orders" />}
-        {list.map((o) => {
-          const svc = serviceById(services, o.service_id)
-          return (
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Btn variant="ghost" onClick={() => doSync([...sel])} disabled={!sel.size} loading={busy === 'sync'} className={small}><RefreshCw size={14} />Sync selected ({sel.size})</Btn>
+        <Btn variant="ghost" onClick={() => doSync([])} loading={busy === 'sync'} className={small}><RefreshCw size={14} />Sync all live</Btn>
+        <Btn variant="ghost" onClick={() => doBulk('completed')} disabled={!sel.size} loading={busy === 'bulk'} className={small}><Check size={14} />Complete</Btn>
+        <Btn variant="danger" onClick={() => doBulk('canceled')} disabled={!sel.size} loading={busy === 'bulk'} className={small}><X size={14} />Cancel + refund</Btn>
+        <Btn variant="ghost" onClick={doExport} className={small}><Download size={14} />CSV</Btn>
+        <Btn onClick={() => setManual(true)} className={small}><Plus size={14} />Manual order</Btn>
+      </div>
+      {rows.length === 0 ? <EmptyState title="No orders found" hint="Try a different search or status filter." /> : (
+        <div className="space-y-2">
+          {rows.map((o) => (
             <div key={o.id} className="card p-3.5">
-              <button onClick={() => setEdit({ _orig: o, status: o.status, remains: o.remains })} className="block w-full text-left">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-bold text-white">{shortId(o.id)}</p>
-                  <div className="flex items-center gap-1.5">
-                    {o.provider_id ? <Badge status="processing"><Plug size={10} /> auto</Badge> : <Badge status="closed">manual</Badge>}
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={sel.has(o.id)} onChange={() => toggle(o.id)} className="mt-1 h-4 w-4 accent-violet-500" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-extrabold text-white">#{o.id}</span>
                     <Badge status={o.status} />
+                    <span className="text-[13px] font-bold text-emerald-300">{money(o.charge, currency())}</span>
+                    {o.provider_order_id && <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/40">prov: {o.provider_order_id}</span>}
                   </div>
+                  <p className="mt-1 truncate text-[13px] font-semibold text-white/85">{smap[o.service_id] || `Service ${o.service_id}`}</p>
+                  <p className="truncate text-xs text-white/45">{umap[o.user_id] || o.user_id} · qty {o.quantity}{o.runs > 0 ? ` · drip ${o.runs}x/${o.interval_mins}m` : ''}</p>
+                  <a href={o.link} target="_blank" rel="noreferrer" className="mt-0.5 flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200">
+                    <LinkIcon size={12} /><span className="truncate">{o.link}</span>
+                  </a>
                 </div>
-                <p className="mt-1 truncate text-[13px] text-white/70">{svc?.name || `#${o.service_id}`}</p>
-                <p className="truncate text-[12px] text-sky-300/70">{o.link}</p>
-                <div className="mt-2 flex items-center justify-between text-[11px] text-white/45">
-                  <span className="flex min-w-0 items-center gap-1"><User size={11} className="shrink-0" /> <span className="truncate">{emailOf(o.user_id)}</span></span>
-                  <span>{Number(o.quantity).toLocaleString()} qty · rem {Number(o.remains ?? 0).toLocaleString()}</span>
-                  <span className="font-bold text-white/70">{money(o.charge, currency())}</span>
-                </div>
-                <p className="mt-1 text-[11px] text-white/30">
-                  {o.provider_order_id ? `Provider order ${o.provider_order_id} · ` : ''}{timeAgo(o.created_at)}
-                </p>
-              </button>
-              <div className="mt-2 flex gap-2">
-                {o.provider_id && ['pending', 'in_progress', 'processing'].includes(o.status) && (
-                  <button
-                    onClick={() => syncSingle(o)}
-                    disabled={syncOne === o.id}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 py-2 text-[13px] font-bold text-sky-300 disabled:opacity-50"
-                  >
-                    <RefreshCw size={14} className={syncOne === o.id ? 'animate-spin' : ''} />
-                    {syncOne === o.id ? 'Syncing…' : o.provider_order_id ? 'Sync status' : 'Push to provider'}
-                  </button>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5 pl-7">
+                <Btn variant="subtle" onClick={() => { setEdit(o); setEditSt(o.status); setEditRem(o.remains ?? '') }} className={small}><Pencil size={13} />Edit</Btn>
+                <Btn variant="subtle" onClick={() => doSync([o.id])} loading={busy === 'sync'} className={small}><RefreshCw size={13} />Sync</Btn>
+                {['completed', 'partial'].includes(o.status) && (
+                  <Btn variant="subtle" onClick={() => doRefill(o.id)} loading={busy === `r${o.id}`} className={small}><RefreshCw size={13} />Refill</Btn>
                 )}
-                <button
-                  onClick={() => setEdit({ _orig: o, status: o.status, remains: o.remains })}
-                  className="flex-1 rounded-xl bg-white/5 py-2 text-[13px] font-bold text-white/70"
-                >
-                  Manage →
-                </button>
+                {['pending', 'in_progress', 'processing', 'partial'].includes(o.status) && (
+                  <Btn variant="danger" onClick={() => { if (window.confirm(`Cancel order #${o.id}? User gets a full refund.`)) doCancel(o.id) }} loading={busy === `c${o.id}`} className={small}><X size={13} />Cancel</Btn>
+                )}
               </div>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
-      <AnimatePresence>
-        {edit && (
-          <Modal title={`Manage ${shortId(edit._orig.id)}`} onClose={() => setEdit(null)}>
-            <div className="space-y-3.5">
-              <div className="rounded-xl bg-white/5 p-3 text-[12px] text-white/60">
-                <p className="flex items-center gap-1.5 truncate"><User size={13} /> {emailOf(edit._orig.user_id)}</p>
-                <p className="mt-0.5 flex items-center gap-1.5"><Wallet size={13} /> {money(edit._orig.charge, currency())} · Qty {Number(edit._orig.quantity).toLocaleString()}</p>
-                {edit._orig.provider_order_id && <p className="mt-0.5 flex items-center gap-1.5 font-mono"><Plug size={13} /> Provider: {edit._orig.provider_order_id}</p>}
-              </div>
-              <Field label="Status">
-                <Select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>
-                  {STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                </Select>
-              </Field>
-              <Field label="Remains (undelivered qty)" hint="Refunds are auto-calculated from remains ÷ quantity.">
-                <Input type="number" min={0} max={edit._orig.quantity} value={edit.remains} onChange={(e) => setEdit({ ...edit, remains: e.target.value })} />
-              </Field>
-              <Btn onClick={save} loading={busy} className="w-full">Save Changes</Btn>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
+      {edit && (
+        <Modal title={`Edit order #${edit.id}`} onClose={() => setEdit(null)}>
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">Status (cancel/refund auto-refunds user)</span>
+              <Select value={editSt} onChange={(e) => setEditSt(e.target.value)}>
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">Remains (0 when completed)</span>
+              <Input value={editRem} onChange={(e) => setEditRem(e.target.value)} type="number" min="0" />
+            </label>
+            <Btn onClick={doSaveEdit} loading={busy === 'edit'} className="w-full">Save (server-side)</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {manual && (
+        <Modal title="Manual order (charged to user)" onClose={() => setManual(null) || setManual(false)} wide>
+          <div className="space-y-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">User</span>
+              <Select value={m.user_id} onChange={(e) => setM({ ...m, user_id: e.target.value })}>
+                <option value="">Select user…</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.email} ({money(u.balance, currency())})</option>)}
+              </Select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">Service</span>
+              <Select value={m.service_id} onChange={(e) => setM({ ...m, service_id: e.target.value })}>
+                <option value="">Select service…</option>
+                {services.map((s) => <option key={s.id} value={s.id}>#{s.id} {s.name} — {money(s.rate, currency())}/1k</option>)}
+              </Select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">Link</span>
+              <Input value={m.link} onChange={(e) => setM({ ...m, link: e.target.value })} placeholder="https://…" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-bold text-white/60">Quantity</span>
+              <Input value={m.quantity} onChange={(e) => setM({ ...m, quantity: e.target.value })} type="number" min="1" />
+            </label>
+            <Btn onClick={doManual} loading={busy === 'manual'} disabled={!m.user_id || !m.service_id || !m.link || !m.quantity} className="w-full">Place order</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

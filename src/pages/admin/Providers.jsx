@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Skeleton, toast } from '../../components/ui'
-import { Download, LinkIcon, Pencil, Plug, Plus, Power, Trash2, Wallet, Wifi } from '../../components/icons'
-import { deleteProvider, fetchProviderServices, importProviderServices, listProviders, saveProvider, testProvider } from '../../lib/db'
+import { Download, LinkIcon, Pencil, Plug, Plus, Power, RefreshCw, Trash2, Wallet, Wifi } from '../../components/icons'
+import { deleteProvider, fetchProviderServices, importProviderServices, listProviders, resyncProvider, saveProvider, testProvider } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
 
@@ -65,6 +65,19 @@ export default function AdminProviders() {
       const res = await testProvider(p.id)
       toast(`Connected! Balance: ${res.balance} ${res.currency || ''}`)
       load()
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setTesting(null)
+    }
+  }
+
+  const doResync = async (p) => {
+    setTesting(`rs${p.id}`)
+    try {
+      const r = await resyncProvider(p.id)
+      toast(`Resynced ${p.name}: ${r.updated}/${r.checked} rates updated, margins kept.`)
+      refreshCatalog()
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -165,6 +178,9 @@ export default function AdminProviders() {
                 <Trash2 size={13} />
               </button>
             </div>
+            <button onClick={() => doResync(p)} disabled={testing === `rs${p.id}`} className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 py-2 text-[12px] font-bold text-violet-200 disabled:opacity-50">
+              <RefreshCw size={13} /> {testing === `rs${p.id}` ? 'Resyncing…' : 'Resync rates (keep my margins)'}
+            </button>
             <button onClick={() => toggle(p)} className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-violet-300">
               <Power size={13} /> {p.status === 'active' ? 'Disable auto-forward' : 'Enable auto-forward'}
             </button>

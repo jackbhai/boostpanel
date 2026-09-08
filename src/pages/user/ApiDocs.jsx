@@ -55,6 +55,12 @@ export default function ApiDocs() {
         </p>
       </div>
 
+      <div className="card mt-3 border-emerald-500/25 bg-emerald-500/5 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-emerald-200">Base URL — live, key auth, no login needed</p>
+        <p className="mt-1.5 break-all rounded-xl border border-white/10 bg-black/40 p-3 font-mono text-[12px] text-sky-200">{FN_URL}/public-api</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-white/50">POST your <span className="font-mono text-white/70">key</span> + <span className="font-mono text-white/70">action</span> as form fields or JSON. Actions: services, add, status, balance, refill, cancel.</p>
+      </div>
+
       <div className="mt-4 space-y-3">
         <div>
           <p className="mb-1.5 text-sm font-bold text-white">1 · Service list</p>

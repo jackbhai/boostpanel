@@ -88,20 +88,8 @@ export async function listUsers() {
 }
 
 export async function adjustBalance(userId, delta, note = 'Manual adjustment') {
-  const profile = await getProfile(userId)
-  if (!profile) throw new Error('User not found')
-  const next = Number(profile.balance || 0) + Number(delta)
-  if (next < 0) throw new Error('Balance cannot go below zero')
-  await updateProfile(userId, { balance: Math.round(next * 100) / 100 })
-  await createTxn({
-    user_id: userId,
-    type: Number(delta) >= 0 ? 'credit' : 'debit',
-    amount: Math.abs(Number(delta)),
-    method: 'admin',
-    status: 'approved',
-    note,
-  })
-  return next
+  const res = await secure('balance.adjust', { user_id: userId, delta: Number(delta), note })
+  return res.balance
 }
 
 /* ---------------------------- CATALOG ----------------------------- */
@@ -136,7 +124,7 @@ export async function deleteService(id) {
 
 /* --------------------- PROVIDER BRIDGE (server) --------------------- */
 
-async function bridge(payload) {
+export async function bridge(payload) {
   try {
     const { data, error } = await sb().functions.invoke('provider-proxy', { body: payload })
     if (error) throw new Error(error.message || 'Bridge request failed')
@@ -149,6 +137,14 @@ async function bridge(payload) {
     }
     throw err
   }
+}
+
+/* Call the `secure` Edge Function — the ONLY server-side writer of money. */
+async function secure(op, params = {}) {
+  const { data, error } = await sb().functions.invoke('secure', { body: { op, ...params } })
+  if (error) throw new Error(error.message || 'Secure request failed')
+  if (data?.error) throw new Error(data.error)
+  return data
 }
 
 /* ---------------------------- PROVIDERS ---------------------------- */
@@ -202,6 +198,8 @@ export async function importProviderServices(provider, items, markupPct, categor
     platform: platformName,
     type: s.type || '',
     rate: Math.max(0.01, Math.round(Number(s.rate) * markup * 100) / 100),
+    cost_rate: Number(s.rate) || 0,
+    margin_pct: Number(markupPct || 0),
     min_qty: Number(s.min) || 1,
     max_qty: Number(s.max) || 100000,
     avg_time: '—',
@@ -218,40 +216,18 @@ export async function importProviderServices(provider, items, markupPct, categor
 
 /* ----------------------------- ORDERS ----------------------------- */
 
-export async function placeOrder(userId, service, link, quantity) {
+export async function placeOrder(userId, service, link, quantity, opts = {}) {
   const qty = Number(quantity)
   if (!link || !link.startsWith('http')) throw new Error('Please enter a valid link starting with http')
   if (!Number.isInteger(qty) || qty < service.min_qty || qty > service.max_qty) {
     throw new Error(`Quantity must be between ${service.min_qty.toLocaleString()} and ${service.max_qty.toLocaleString()}`)
   }
-  const charge = Math.round(calcCharge(service.rate, qty) * 100) / 100
-  const profile = await getProfile(userId)
-  if (!profile || profile.status === 'banned') throw new Error('Account is not active')
-  if (Number(profile.balance) < charge) throw new Error('Insufficient balance. Please add funds.')
-
-  await updateProfile(userId, { balance: Math.round((Number(profile.balance) - charge) * 100) / 100 })
-  const order = await row(sb().from('orders').insert({
-    user_id: userId, service_id: service.id, link, quantity: qty,
-    charge, status: 'pending', remains: qty, start_count: 0,
-    provider_id: service.provider_id || null,
-  }).select().single())
-
-  await createTxn({
-    user_id: userId, type: 'debit', amount: charge, method: 'order',
-    txn_ref: `ORD-${order.id}`, status: 'approved', note: `${service.name} × ${qty.toLocaleString()}`,
+  // Price is computed SERVER-side from the live DB rate — never trusted from client.
+  const res = await secure('order.create', {
+    service_id: service.id, link, quantity: qty,
+    runs: opts.runs || 0, interval_mins: opts.interval_mins || 0,
   })
-
-  // Auto-forward to provider (server-side). Failure keeps order pending for retry.
-  let forwarded = false
-  if (service.provider_id && service.provider_service_id) {
-    try {
-      await bridge({ action: 'forward', order_id: order.id })
-      forwarded = true
-    } catch (err) {
-      console.warn('Provider forward failed (order kept pending):', err.message)
-    }
-  }
-  return { order, forwarded }
+  return { order: res.order, forwarded: res.forwarded, charge: res.charge, provider_error: res.provider_error }
 }
 
 export async function getUserOrders(userId) {
@@ -262,47 +238,21 @@ export async function getAllOrders() {
   return row(sb().from('orders').select('*').order('created_at', { ascending: false }).limit(500))
 }
 
-async function refundOrder(order, note) {
-  const qty = Number(order.quantity || 0)
-  const remains = Number(order.remains ?? qty)
-  if (!qty) return 0
-  const refund = Math.round((Number(order.charge) * remains) / qty * 100) / 100
-  if (refund <= 0) return 0
-  const profile = await getProfile(order.user_id)
-  await updateProfile(order.user_id, { balance: Math.round((Number(profile.balance) + refund) * 100) / 100 })
-  await createTxn({
-    user_id: order.user_id, type: 'credit', amount: refund, method: 'refund',
-    txn_ref: `ORD-${order.id}`, status: 'approved', note,
-  })
-  return refund
-}
+/* refunds are computed server-side inside the `secure` edge fn */
 
 export async function setOrderStatus(order, status, remains = null) {
-  const patch = { status }
-  if (status === 'completed') patch.remains = 0
-  else if (remains !== null) patch.remains = Number(remains)
-  if (['canceled', 'refunded', 'partial'].includes(status) && !['canceled', 'refunded'].includes(order.status)) {
-    await refundOrder({ ...order, ...patch }, `Auto-refund: order #${order.id} → ${status}`)
-  }
-  return row(sb().from('orders').update(patch).eq('id', order.id).select().single())
+  const id = typeof order === 'object' ? order.id : order
+  return secure('admin.order_set', { order_id: id, status, remains })
 }
 
 export async function cancelOrder(order) {
-  if (!['pending', 'in_progress', 'processing'].includes(order.status)) {
-    throw new Error('Only pending / in-progress orders can be canceled')
-  }
-  if (order.provider_order_id) {
-    try { await bridge({ action: 'cancel', order_id: order.id }) } catch (e) { console.warn(e.message) }
-  }
-  return setOrderStatus(order, 'canceled')
+  const id = typeof order === 'object' ? order.id : order
+  return secure('order.cancel', { order_id: id })
 }
 
 export async function refillOrder(order) {
-  if (!['completed', 'partial'].includes(order.status)) throw new Error('Only completed orders can be refilled')
-  if (order.provider_order_id) {
-    await bridge({ action: 'refill', order_id: order.id })
-  }
-  return row(sb().from('orders').update({ status: 'in_progress', remains: order.quantity }).eq('id', order.id).select().single())
+  const id = typeof order === 'object' ? order.id : order
+  return secure('order.refill', { order_id: id })
 }
 
 /** Sync one order with provider (auto-forwards first if never sent). */
@@ -322,9 +272,7 @@ export async function syncAllProviderOrders() {
 
 /* --------------------------- TRANSACTIONS -------------------------- */
 
-export async function createTxn(txn) {
-  return row(sb().from('transactions').insert(txn).select().single())
-}
+/* createTxn removed — every ledger write goes through the `secure` edge fn */
 
 /** Upload payment screenshot → returns public URL. */
 export async function uploadProof(file, userId) {
@@ -343,10 +291,10 @@ export async function requestTopup(userId, { amount, method, txn_ref, screenshot
   if (!amt || amt <= 0) throw new Error('Enter a valid amount')
   if (!txn_ref?.trim()) throw new Error('UTR / Ref ID is required')
   if (!screenshot_url) throw new Error('Payment screenshot is required')
-  return createTxn({
-    user_id: userId, type: 'credit', amount: Math.round(amt * 100) / 100,
-    method, txn_ref: txn_ref.trim(), screenshot_url, status: 'pending', note: '',
+  const res = await secure('funds.request', {
+    amount: Math.round(amt * 100) / 100, method, txn_ref: txn_ref.trim(), screenshot_url,
   })
+  return res.txn
 }
 
 export async function getUserTxns(userId) {
@@ -358,15 +306,13 @@ export async function getAllTxns() {
 }
 
 export async function approveTopup(txn) {
-  if (txn.status !== 'pending') throw new Error('Only pending requests can be approved')
-  const profile = await getProfile(txn.user_id)
-  await updateProfile(txn.user_id, { balance: Math.round((Number(profile.balance) + Number(txn.amount)) * 100) / 100 })
-  return row(sb().from('transactions').update({ status: 'approved' }).eq('id', txn.id).select().single())
+  const id = typeof txn === 'object' ? txn.id : txn
+  return secure('funds.approve', { txn_id: id })
 }
 
 export async function rejectTopup(txn) {
-  if (txn.status !== 'pending') throw new Error('Only pending requests can be rejected')
-  return row(sb().from('transactions').update({ status: 'rejected' }).eq('id', txn.id).select().single())
+  const id = typeof txn === 'object' ? txn.id : txn
+  return secure('funds.reject', { txn_id: id })
 }
 
 /* ----------------------------- TICKETS ----------------------------- */
@@ -430,7 +376,7 @@ export async function deleteAnnouncement(id) {
 const DEFAULT_SETTINGS = {
   site_name: 'BoostPanel', currency: '₹', min_deposit: 100, support_email: '', notice: '',
   upi_id: '', upi_payee: 'BoostPanel', pay_upi: true, pay_card: false, pay_crypto: false,
-  card_info: '', crypto_info: '',
+  card_info: '', crypto_info: '', signup_bonus: 0, maintenance: false, deposit_bonus_pct: 0,
 }
 
 export async function getSettings() {
@@ -482,4 +428,38 @@ export async function getAdminStats() {
     openTickets: tickets.filter((t) => t.status === 'open').length,
     series,
   }
+}
+
+/* ------------------------- ADMIN CONTROLS ------------------------- */
+
+/** Server-side manual order (admin). Charge computed from live rate. */
+export async function manualOrder({ user_id, service_id, link, quantity }) {
+  return secure('admin.order_create', { user_id, service_id, link, quantity })
+}
+
+/** Server-side user update: role / status / discount / limits / note. */
+export async function updateUserAdmin(userId, patch) {
+  return secure('admin.user_update', { user_id: userId, ...patch })
+}
+
+/** Re-apply stored margins on fresh provider rates. */
+export async function resyncProvider(providerId) {
+  return bridge({ action: 'resync', provider_id: providerId })
+}
+
+/** Append-only audit log (admin). */
+export async function getAdminLogs(limit = 300) {
+  return row(sb().from('admin_logs').select('*').order('id', { ascending: false }).limit(limit))
+}
+
+/* --------------------------- FAVORITES ---------------------------- */
+
+export async function getFavorites(userId) {
+  const rows = await row(sb().from('favorites').select('service_id').eq('user_id', userId))
+  return rows.map((r) => r.service_id)
+}
+
+export async function toggleFavorite(userId, serviceId, on) {
+  if (on) await row(sb().from('favorites').insert({ user_id: userId, service_id: serviceId }))
+  else await row(sb().from('favorites').delete().eq('user_id', userId).eq('service_id', serviceId))
 }

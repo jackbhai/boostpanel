@@ -59,6 +59,16 @@ export default function Profile() {
         <Btn onClick={() => navigate('/funds')} className="!py-2 text-[13px]">+ Add Funds</Btn>
       </div>
 
+      {(profile?.discount_pct > 0 || profile?.order_limit > 0) && (
+        <div className="card mt-3 flex gap-2 border-violet-500/25 bg-violet-500/5 p-4 text-center">
+          {profile?.discount_pct > 0 && (
+            <div className="flex-1"><p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Your discount</p><p className="text-xl font-extrabold text-violet-200">{profile.discount_pct}%</p></div>
+          )}
+          {profile?.order_limit > 0 && (
+            <div className="flex-1"><p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Daily order limit</p><p className="text-xl font-extrabold text-white">{profile.order_limit}</p></div>
+          )}
+        </div>
+      )}
       <div className="card mt-3 p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-white/45">API key</p>
         <div className="mt-1.5 flex items-center gap-2">

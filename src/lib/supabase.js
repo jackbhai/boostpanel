@@ -8,3 +8,4 @@ export const isConfigured = Boolean(url && anonKey)
 
 /** Supabase client (null when not configured). */
 export const supabase = isConfigured ? createClient(url, anonKey) : null
+export const FN_URL = isConfigured ? `${url}/functions/v1` : ''

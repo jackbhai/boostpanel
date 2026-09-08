@@ -1,133 +1,169 @@
-import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
-import { Shield, User, Users as UsersIcon, XCircle } from '../../components/icons'
-import { adjustBalance, listUsers, updateProfile } from '../../lib/db'
+import { adjustBalance, getUserOrders, listUsers, updateUserAdmin } from '../../lib/db'
 import { useStore } from '../../lib/store'
-import { money, timeAgo } from '../../lib/utils'
+import { money } from '../../lib/utils'
+import { downloadCSV } from '../../lib/csv'
+import {
+  Badge, Btn, EmptyState, Input, Modal, PageHead,
+  SearchInput, Select, Skeleton, toast,
+} from '../../components/ui'
+import { BadgeCheck, Check, Download, Pencil, Wallet, XCircle } from '../../components/icons'
+
+const small = '!px-3 !py-1.5 text-[12px]'
 
 export default function AdminUsers() {
-  const { user: me, currency } = useStore()
+  const { currency } = useStore()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [edit, setEdit] = useState(null)
-  const [amount, setAmount] = useState('')
+  const [rf, setRf] = useState('all')
+  const [sf, setSf] = useState('all')
+  const [sel, setSel] = useState(null)
+  const [form, setForm] = useState({ role: 'user', status: 'active', discount_pct: 0, order_limit: 0, note: '' })
+  const [adj, setAdj] = useState({ delta: '', note: '' })
+  const [spent, setSpent] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const load = () => {
-    setLoading(true)
-    listUsers().then(setUsers).catch((e) => toast(e.message, 'error')).finally(() => setLoading(false))
+  const load = async () => {
+    try {
+      setUsers((await listUsers()) || [])
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+    setLoading(false)
   }
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
-  const list = useMemo(() => users.filter((u) =>
-    !q || `${u.email} ${u.id}`.toLowerCase().includes(q.toLowerCase())
-  ), [users, q])
+  const rows = useMemo(() => {
+    const s = q.trim().toLowerCase()
+    return users.filter((u) => {
+      if (rf !== 'all' && u.role !== rf) return false
+      if (sf !== 'all' && u.status !== sf) return false
+      if (s && !(u.email || '').toLowerCase().includes(s)) return false
+      return true
+    })
+  }, [users, q, rf, sf])
 
-  const adjust = async (sign) => {
-    const amt = Number(amount)
-    if (!amt || amt <= 0) return toast('Enter a valid amount', 'error')
+  const open = async (u) => {
+    setSel(u)
+    setForm({ role: u.role, status: u.status, discount_pct: u.discount_pct || 0, order_limit: u.order_limit || 0, note: u.note || '' })
+    setAdj({ delta: '', note: '' })
+    setSpent(null)
+    try {
+      const o = await getUserOrders(u.id)
+      setSpent({ n: o.length, total: o.reduce((a, x) => a + Number(x.charge || 0), 0) })
+    } catch { setSpent({ n: 0, total: 0 }) }
+  }
+
+  const save = async () => {
     setBusy(true)
     try {
-      await adjustBalance(edit.id, sign * amt, `Manual ${sign > 0 ? 'credit' : 'debit'} by admin`)
-      toast(`${sign > 0 ? 'Added' : 'Deducted'} ${money(amt, currency())}`)
-      setAmount('')
-      const fresh = await listUsers()
-      setUsers(fresh)
-      setEdit(fresh.find((u) => u.id === edit.id))
-    } catch (err) {
-      toast(err.message, 'error')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const setRole = async (role) => {
-    if (edit.id === me.id) return toast('You cannot change your own role', 'error')
-    try {
-      await updateProfile(edit.id, { role })
-      toast(`User is now ${role}`)
+      await updateUserAdmin(sel.id, { ...form, discount_pct: Number(form.discount_pct) || 0, order_limit: Number(form.order_limit) || 0 })
+      toast(`Saved ${sel.email}.`)
+      setSel({ ...sel, ...form, discount_pct: Number(form.discount_pct) || 0, order_limit: Number(form.order_limit) || 0 })
       load()
-      setEdit(null)
-    } catch (err) {
-      toast(err.message, 'error')
+    } catch (e) {
+      toast(e.message, 'error')
     }
+    setBusy(false)
   }
 
-  const setStatus = async (status) => {
-    if (edit.id === me.id) return toast('You cannot ban yourself', 'error')
+  const adjust = async () => {
+    setBusy(true)
     try {
-      await updateProfile(edit.id, { status })
-      toast(status === 'banned' ? 'User banned' : 'User unbanned')
+      const bal = await adjustBalance(sel.id, Number(adj.delta), adj.note || 'Manual adjustment by admin')
+      toast(`Balance updated → ${money(bal, currency())}.`)
+      setSel({ ...sel, balance: bal })
+      setAdj({ delta: '', note: '' })
       load()
-      setEdit(null)
-    } catch (err) {
-      toast(err.message, 'error')
+    } catch (e) {
+      toast(e.message, 'error')
+    }
+    setBusy(false)
+  }
+
+  const quick = async (u, patch) => {
+    try {
+      await updateUserAdmin(u.id, patch)
+      toast(`${u.email} updated.`)
+      load()
+    } catch (e) {
+      toast(e.message, 'error')
     }
   }
 
+  if (loading) return <Skeleton lines={5} />
   return (
     <div>
-      <PageHead title="Users" sub={`${users.length} registered`} />
-      <SearchInput value={q} onChange={setQ} placeholder="Search email…" />
-
-      <div className="mt-4 space-y-2.5">
-        {loading && <Skeleton lines={4} />}
-        {!loading && list.length === 0 && <EmptyState icon={<UsersIcon size={40} />} title="No users found" />}
-        {list.map((u) => (
-          <button key={u.id} onClick={() => setEdit(u)} className="card card-hover flex w-full items-center gap-3 p-3.5 text-left">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/40 to-fuchsia-500/40 text-lg font-bold text-white">
-              {u.email[0].toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-semibold text-white">{u.email}</span>
-              <span className="mt-0.5 block text-[11px] text-white/40">Joined {timeAgo(u.created_at)}</span>
-            </span>
-            <span className="text-right">
-              <span className="block text-[15px] font-extrabold text-emerald-300">{money(u.balance, currency())}</span>
-              <span className="mt-1 flex justify-end gap-1">
-                {u.role === 'admin' && <Badge status="pending">admin</Badge>}
-                {u.status === 'banned' ? <Badge status="banned" /> : <Badge status="active" />}
-              </span>
-            </span>
-          </button>
-        ))}
+      <PageHead title="Users" sub="Balance, discount, limits, role — everything is in your hands." />
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+        <div className="flex-1"><SearchInput value={q} onChange={setQ} placeholder="Search email…" /></div>
+        <Select value={rf} onChange={(e) => setRf(e.target.value)} className="sm:w-36">
+          <option value="all">All roles</option><option value="user">Users</option><option value="admin">Admins</option>
+        </Select>
+        <Select value={sf} onChange={(e) => setSf(e.target.value)} className="sm:w-36">
+          <option value="all">All status</option><option value="active">Active</option><option value="banned">Banned</option>
+        </Select>
+        <Btn variant="ghost" onClick={() => downloadCSV('users.csv', rows.map((u) => ({ email: u.email, balance: u.balance, role: u.role, status: u.status, discount: u.discount_pct, limit: u.order_limit, joined: u.created_at })))} className={small}><Download size={14} />CSV</Btn>
       </div>
-
-      <AnimatePresence>
-        {edit && (
-          <Modal title="Manage user" onClose={() => setEdit(null)}>
-            <div className="space-y-4">
-              <div className="rounded-xl bg-white/5 p-3 text-[13px]">
-                <p className="truncate font-bold text-white">{edit.email}</p>
-                <p className="mt-0.5 text-white/50">Balance: <b className="text-emerald-300">{money(edit.balance, currency())}</b></p>
+      <p className="mb-3 text-xs text-white/40">{rows.length} users · tap a row to manage.</p>
+      {rows.length === 0 ? <EmptyState title="No users found" /> : (
+        <div className="space-y-2">
+          {rows.map((u) => (
+            <div key={u.id} onClick={() => open(u)} className="card card-hover cursor-pointer p-3.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13.5px] font-bold text-white">{u.email}</span>
+                {u.role === 'admin' && <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300"><BadgeCheck size={11} />ADMIN</span>}
+                <Badge status={u.status} />
+                <span className="text-[13px] font-extrabold text-emerald-300">{money(u.balance, currency())}</span>
               </div>
-
-              <Field label="Add / deduct balance">
-                <div className="flex gap-2">
-                  <Input type="number" placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
-                  <Btn variant="success" onClick={() => adjust(1)} loading={busy} className="!px-4">+ Add</Btn>
-                  <Btn variant="danger" onClick={() => adjust(-1)} loading={busy} className="!px-4">− Cut</Btn>
-                </div>
-              </Field>
-
-              <Field label="Role">
-                <div className="grid grid-cols-2 gap-2">
-                  <Btn variant={edit.role === 'user' ? 'primary' : 'ghost'} onClick={() => setRole('user')}><User size={15} /> User</Btn>
-                  <Btn variant={edit.role === 'admin' ? 'primary' : 'ghost'} onClick={() => setRole('admin')}><Shield size={15} /> Admin</Btn>
-                </div>
-              </Field>
-
-              {edit.status === 'banned' ? (
-                <Btn variant="success" onClick={() => setStatus('active')} className="w-full">Unban User</Btn>
-              ) : (
-                <Btn variant="danger" onClick={() => setStatus('banned')} className="w-full"><XCircle size={15} /> Ban User</Btn>
-              )}
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-white/40">
+                <span>discount {u.discount_pct || 0}%</span>
+                <span>daily limit {u.order_limit > 0 ? u.order_limit : 'unlimited'}</span>
+                {u.note && <span className="truncate">note: {u.note}</span>}
+              </div>
             </div>
-          </Modal>
-        )}
-      </AnimatePresence>
+          ))}
+        </div>
+      )}
+
+      {sel && (
+        <Modal title={sel.email} onClose={() => setSel(null)} wide>
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] uppercase tracking-wide text-white/40">Balance</p><p className="text-sm font-extrabold text-emerald-300">{money(sel.balance, currency())}</p></div>
+              <div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] uppercase tracking-wide text-white/40">Orders</p><p className="text-sm font-extrabold text-white">{spent ? spent.n : '…'}</p></div>
+              <div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] uppercase tracking-wide text-white/40">Spent</p><p className="text-sm font-extrabold text-white">{spent ? money(spent.total, currency()) : '…'}</p></div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-bold text-white/60">Add / remove balance</p>
+              <div className="flex gap-2">
+                <Input value={adj.delta} onChange={(e) => setAdj({ ...adj, delta: e.target.value })} placeholder="+100 or -50" type="number" />
+                <Input value={adj.note} onChange={(e) => setAdj({ ...adj, note: e.target.value })} placeholder="Note" />
+                <Btn onClick={adjust} loading={busy} disabled={!adj.delta} className={small}><Wallet size={14} />Apply</Btn>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Role</span>
+                <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}><option value="user">User</option><option value="admin">Admin</option></Select></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Status</span>
+                <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="active">Active</option><option value="banned">Banned</option></Select></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Discount % (all orders)</span>
+                <Input value={form.discount_pct} onChange={(e) => setForm({ ...form, discount_pct: e.target.value })} type="number" min="0" max="100" /></label>
+              <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Daily order limit (0 = ∞)</span>
+                <Input value={form.order_limit} onChange={(e) => setForm({ ...form, order_limit: e.target.value })} type="number" min="0" /></label>
+            </div>
+            <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Private note (only admins see)</span>
+              <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="e.g. VIP reseller, pays monthly" /></label>
+            <div className="flex gap-2">
+              <Btn onClick={save} loading={busy} className="flex-1"><Pencil size={15} />Save user</Btn>
+              {sel.status === 'active'
+                ? <Btn variant="danger" onClick={() => { quick(sel, { status: 'banned' }); setSel(null) }}><XCircle size={15} />Ban</Btn>
+                : <Btn variant="success" onClick={() => { quick(sel, { status: 'active' }); setSel(null) }}><Check size={15} />Unban</Btn>}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

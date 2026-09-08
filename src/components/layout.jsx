@@ -1,7 +1,9 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import AdminSidebar from './AdminSidebar'
 import { useStore } from '../lib/store'
 import { money } from '../lib/utils'
-import { ClipboardList, Home, LayoutGrid, Plus, Rocket, Settings, ShoppingCart, Users, Wallet } from './icons'
+import { ClipboardList, Home, LayoutGrid, Menu, Plus, Rocket, Settings, ShoppingCart, Users, Wallet } from './icons'
 
 /* ------------------------------ Guards ------------------------------ */
 
@@ -159,40 +161,25 @@ export function UserLayout() {
 
 /* ---------------------------- Admin layout ---------------------------- */
 
-const ADMIN_TABS = [
-  { to: '/admin', icon: Home, label: 'Home', end: true },
-  { to: '/admin/orders', icon: ShoppingCart, label: 'Orders' },
-  { to: '/admin/users', icon: Users, label: 'Users' },
-  { to: '/admin/funds', icon: Wallet, label: 'Funds' },
-  { to: '/admin/settings', icon: Settings, label: 'Setup' },
-]
-
 export function AdminLayout() {
-  const navigate = useNavigate()
+  const [mobileOpen, setMobileOpen] = useState(false)
   return (
-    <div className="min-h-screen">
-      <LiveBar />
-      <header className="sticky top-0 z-40 border-b border-amber-500/15 bg-black/90 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <button onClick={() => navigate('/admin')}><Logo admin /></button>
-          <button
-            onClick={() => navigate('/')}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10"
-          >
-            ← View site
-          </button>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-2xl px-4 pb-32 pt-4">
-        <Outlet />
-      </main>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-stretch px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1">
-          {ADMIN_TABS.map((t) => <Tab key={t.to} {...t} end={t.end} />)}
-        </div>
-      </nav>
+    <div className="min-h-screen md:flex md:items-stretch">
+      <AdminSidebar mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <div className="min-w-0 flex-1">
+        <LiveBar />
+        <header className="sticky top-0 z-30 border-b border-amber-500/15 bg-black/90 backdrop-blur md:hidden">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <button onClick={() => setMobileOpen(true)} aria-label="Open menu" className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70">
+              <Menu size={20} />
+            </button>
+            <Logo admin />
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-3xl px-4 pb-16 pt-4 md:pt-6">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

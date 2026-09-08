@@ -7,6 +7,7 @@ import { useStore } from './lib/store'
 import { Login, Signup } from './pages/auth'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminFunds from './pages/admin/Funds'
+import AdminLogs from './pages/admin/Logs'
 import AdminOrders from './pages/admin/Orders'
 import AdminProviders from './pages/admin/Providers'
 import AdminServices from './pages/admin/Services'
@@ -47,8 +48,25 @@ function SetupNeeded() {
   )
 }
 
+function Maintenance() {
+  const { logout } = useStore()
+  return (
+    <div className="flex min-h-screen items-center justify-center px-6">
+      <div className="card max-w-md p-8 text-center">
+        <p className="grad-text text-xl font-extrabold">Under maintenance</p>
+        <p className="mt-2 text-sm leading-relaxed text-white/55">
+          The panel is being upgraded. Please come back in a few minutes.
+        </p>
+        <button onClick={logout} className="mt-4 rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10">
+          Log out
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
-  const { boot, booted, setupError } = useStore()
+  const { boot, booted, setupError, settings, profile } = useStore()
 
   useEffect(() => {
     boot()
@@ -56,6 +74,7 @@ export default function App() {
 
   if (!booted) return <BootSplash />
   if (setupError) return <SetupNeeded />
+  if (settings?.maintenance && profile && profile.role !== 'admin') return <Maintenance />
 
   return (
     <Router basename={import.meta.env.BASE_URL}>
@@ -93,6 +112,7 @@ export default function App() {
             <Route path="/admin/funds" element={<AdminFunds />} />
             <Route path="/admin/tickets" element={<AdminTickets />} />
             <Route path="/admin/tickets/:id" element={<AdminTicketDetail />} />
+            <Route path="/admin/logs" element={<AdminLogs />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
           </Route>
         </Route>
