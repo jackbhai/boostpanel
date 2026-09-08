@@ -1,0 +1,17 @@
+# deps & build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# env — NEVER commit real keys
+.env
+.env.*
+!.env.example
+
+# logs & editor
+npm-debug.log*
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
