@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton, toast } from '../../components/ui'
 import { ArrowDownLeft, ArrowUpRight, Receipt, Download } from '../../components/icons'
 import { getUserTxns } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
 
@@ -14,9 +15,12 @@ export default function Transactions() {
   const [filter, setFilter] = useState('all')
   const [stFilter, setStFilter] = useState('all')
 
-  useEffect(() => {
-    getUserTxns(user.id).then(setTxns).catch((e) => toast(e.message, 'error')).finally(() => setLoading(false))
-  }, [])
+  const load = (silent) => {
+    if (!silent) setLoading(true)
+    getUserTxns(user.id).then(setTxns).catch((e) => { if (!silent) toast(e.message, 'error') }).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('txns', () => load(true))
 
   const list = useMemo(() => txns.filter((t) => (filter === 'all' || t.type === filter) && (stFilter === 'all' || t.status === stFilter)), [txns, filter, stFilter])
   const inflow = txns.filter((t) => t.type === 'credit' && t.status === 'approved').reduce((s, t) => s + Number(t.amount), 0)

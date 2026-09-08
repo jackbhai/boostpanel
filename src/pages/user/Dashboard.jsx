@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton } from '../../components/ui'
 import { ArrowRight, Bell, Box, ClipboardList, Layers, LifeBuoy, Megaphone, Plug, Plus, ShoppingCart, Star, Ticket, Wallet } from '../../components/icons'
 import { getAnnouncements, getUserOrders, getUserStats, listNotifications } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { serviceById, useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
 
@@ -27,8 +28,9 @@ export default function Dashboard() {
   const [unread, setUnread] = useState(0)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    refreshProfile()
+  const load = (silent) => {
+    if (!silent) refreshProfile()
+    else refreshProfile().catch(() => {})
     listNotifications(user.id, 50).then((n) => setUnread((n || []).filter((x) => !x.read).length)).catch(() => {})
     Promise.all([getUserStats(user.id), getUserOrders(user.id), getAnnouncements(true)])
       .then(([s, orders, anns]) => {
@@ -43,7 +45,12 @@ export default function Dashboard() {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('orders', () => load(true))
+  useLiveEvent('txns', () => load(true))
+  useLiveEvent('notifs', () => load(true))
+  useLiveEvent('announce', () => load(true))
 
   return (
     <div>

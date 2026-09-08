@@ -274,3 +274,17 @@ export function PlatformIcon({ platform = '', size = 18, ...props }) {
   if (n.includes('spot')) return <Spotify size={size} {...props} />
   return <Tag size={size} {...props} />
 }
+
+/* ------------------------- v5: security + sound ------------------------- */
+
+export const KeyRound = (p) => (
+  <I {...p}><circle cx="8" cy="14" r="4.2" /><path d="M11.2 10.8L20 2.5" /><path d="M16.5 6l2.6 2.6" /><path d="M13.8 8.7l2.4 2.4" /></I>
+)
+
+export const Volume2 = (p) => (
+  <I {...p}><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" /><path d="M15 9a4.2 4.2 0 010 6" /><path d="M17.4 6.6a7.6 7.6 0 010 10.8" /></I>
+)
+
+export const VolumeX = (p) => (
+  <I {...p}><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" /><path d="M15.5 9.5l5 5" /><path d="M20.5 9.5l-5 5" /></I>
+)

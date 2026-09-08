@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertCircle, CheckCircle2, Search, X } from './icons'
+import { useEffect, useState } from 'react'
+import { AlertCircle, CheckCircle2, Info, Search, X } from './icons'
 import { create } from 'zustand'
+import { sfx } from '../lib/sound'
 import { statusLabel, statusStyle } from '../lib/utils'
 
 /* ------------------------------ Toast ------------------------------ */
@@ -8,6 +10,7 @@ import { statusLabel, statusStyle } from '../lib/utils'
 export const useToast = create((set) => ({
   items: [],
   push: (text, type = 'success') => {
+    sfx(type === 'error' ? 'error' : type === 'info' ? 'pop' : 'success')
     const id = Math.random().toString(36).slice(2)
     set((s) => ({ items: [...s.items, { id, text, type }] }))
     setTimeout(() => set((s) => ({ items: s.items.filter((t) => t.id !== id) })), 3200)
@@ -30,10 +33,12 @@ export function Toasts() {
             className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-sm shadow-xl backdrop-blur ${
               t.type === 'error'
                 ? 'border-rose-500/40 bg-rose-950/90 text-rose-100'
-                : 'border-emerald-500/40 bg-emerald-950/90 text-emerald-100'
+                : t.type === 'info'
+                  ? 'border-sky-500/40 bg-sky-950/90 text-sky-100'
+                  : 'border-emerald-500/40 bg-emerald-950/90 text-emerald-100'
             }`}
           >
-            {t.type === 'error' ? <AlertCircle size={16} /> : <CheckCircle2 size={16} />}
+            {t.type === 'error' ? <AlertCircle size={16} /> : t.type === 'info' ? <Info size={16} /> : <CheckCircle2 size={16} />}
             <span className="flex-1">{t.text}</span>
           </motion.div>
         ))}
@@ -44,7 +49,7 @@ export function Toasts() {
 
 /* ----------------------------- Buttons ----------------------------- */
 
-export function Btn({ variant = 'primary', className = '', loading, disabled, children, ...props }) {
+export function Btn({ variant = 'primary', className = '', loading, disabled, silent, onClick, children, ...props }) {
   const styles = {
     primary: 'grad-btn text-white shadow-lg shadow-violet-600/30 hover:opacity-90',
     ghost: 'bg-white/5 text-white border border-white/10 hover:bg-white/10',
@@ -54,6 +59,7 @@ export function Btn({ variant = 'primary', className = '', loading, disabled, ch
   }
   return (
     <button
+      onClick={(e) => { if (!silent && !loading && !disabled) sfx('click'); onClick?.(e) }}
       disabled={disabled || loading}
       className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 ${styles[variant]} ${className}`}
       {...props}
@@ -95,13 +101,20 @@ export function Textarea(props) {
   return <textarea {...props} className={`${inputCls} min-h-[90px] resize-y ${props.className || ''}`} />
 }
 
-export function SearchInput({ value, onChange, placeholder = 'Search…' }) {
+export function SearchInput({ value, onChange, placeholder = 'Search…', delay = 250 }) {
+  const [inner, setInner] = useState(value)
+  useEffect(() => setInner(value), [value])
+  useEffect(() => {
+    if (inner === value) return
+    const t = setTimeout(() => onChange(inner), delay)
+    return () => clearTimeout(t)
+  }, [inner]) // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="relative">
       <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/35" />
       <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={inner}
+        onChange={(e) => setInner(e.target.value)}
         placeholder={placeholder}
         className={`${inputCls} pl-9`}
       />
@@ -146,9 +159,9 @@ export function Skeleton({ lines = 3 }) {
   return (
     <div className="space-y-3">
       {[...Array(lines)].map((_, i) => (
-        <div key={i} className="card animate-pulse p-4">
-          <div className="h-4 w-2/3 rounded bg-white/10" />
-          <div className="mt-2 h-3 w-1/3 rounded bg-white/5" />
+        <div key={i} className="card p-4">
+          <div className="shimmer h-4 w-2/3 rounded" />
+          <div className="shimmer mt-2 h-3 w-1/3 rounded" />
         </div>
       ))}
     </div>

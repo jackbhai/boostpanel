@@ -4,6 +4,7 @@ import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../..
 import { Box, ExternalLink, RefreshCcw, XCircle, Clock, Star } from '../../components/icons'
 import { cancelOrder, getUserOrders, refillOrder, createReview, orderEvents } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
+import { useLiveEvent } from '../../lib/cache'
 import { money, progressOf, shortId, timeAgo } from '../../lib/utils'
 
 const FILTERS = ['all', 'pending', 'in_progress', 'completed', 'partial', 'canceled', 'refunded']
@@ -21,15 +22,16 @@ export default function Orders() {
   const [stars, setStars] = useState(5)
   const [reviewText, setReviewText] = useState('')
 
-  const load = () => {
-    setLoading(true)
+  const load = (silent) => {
+    if (!silent) setLoading(true)
     getUserOrders(user.id)
       .then(setOrders)
-      .catch((e) => toast(e.message, 'error'))
+      .catch((e) => { if (!silent) toast(e.message, 'error') })
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('orders', () => load(true))
 
   const toggleTimeline = async (id) => {
     if (expanded === id) { setExpanded(null); return }

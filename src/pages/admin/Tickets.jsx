@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
 import { Ticket, User, Clock, Star } from '../../components/icons'
 import { getAllTickets, listUsers } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { useStore } from '../../lib/store'
 import { shortId, timeAgo } from '../../lib/utils'
 
@@ -14,12 +15,15 @@ export default function AdminTickets() {
   const [q, setQ] = useState('')
   const { settings } = useStore()
 
-  useEffect(() => {
+  const load = (silent) => {
+    if (!silent) setLoading(true)
     Promise.all([getAllTickets(), listUsers().catch(() => [])])
       .then(([t, u]) => { setTickets(t); setUsers(u) })
-      .catch((e) => toast(e.message, 'error'))
+      .catch((e) => { if (!silent) toast(e.message, 'error') })
       .finally(() => setLoading(false))
-  }, [])
+  }
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('admin-tickets', () => load(true))
 
   const emailOf = (id) => users.find((u) => u.id === id)?.email || String(id).slice(0, 8)
 

@@ -50,6 +50,25 @@ Deno.serve(async (req) => {
   if (me.status !== "active") return j({ error: "Account is suspended. Contact support." }, 403);
   const admin = me.role === "admin";
 
+  // ── abuse shield: per-user sliding-window rate limits ──
+  const RL: Record<string, [number, number]> = {
+    "order.create": [60, 30], "funds.request": [60, 8], "transfer.send": [60, 10],
+    "broadcast.send": [60, 3], "balance.adjust": [60, 20], "admin.order_create": [60, 20],
+    "admin.order_set": [60, 60], "referral.claim": [60, 10], "loyalty.convert": [60, 10],
+    "account.delete_self": [300, 3], "review.create": [60, 20], "ticket.rate": [60, 20],
+  };
+  // S: server-side input hygiene (mirrors client clean())
+  const S = (v: any, max = 2000) => String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/<\s*script/gi, "<blocked").replace(/javascript\s*:/gi, "blocked:").trim().slice(0, max);
+  {
+    const [win, max] = RL[op] || [60, 120];
+    const since = new Date(Date.now() - win * 1000).toISOString();
+    await sb.from("rate_hits").insert({ user_id: meId, op });
+    const { count } = await sb.from("rate_hits").select("id", { count: "exact", head: true })
+      .eq("user_id", meId).eq("op", op).gte("ts", since);
+    if (Math.random() < 0.03) await sb.from("rate_hits").delete().lt("ts", new Date(Date.now() - 3600000).toISOString());
+    if ((count || 0) > max) return j({ error: "Too many requests. Slow down a moment." }, 429);
+  }
+
   const log = async (action: string, target = "", meta: any = {}) => {
     await sb.from("admin_logs").insert({
       actor_id: meId, actor_email: me.email || "", action, target, meta,
@@ -67,7 +86,7 @@ Deno.serve(async (req) => {
       const svcId = Number(b.service_id), qty = Number(b.quantity);
       const runs = Math.min(100, Math.max(0, Number(b.runs) || 0));
       const interval = Math.min(1440, Math.max(0, Number(b.interval_mins) || 0));
-      const link = String(b.link || "").trim();
+      const link = S(b.link, 1000);
       if (!svcId || !link || !qty || qty < 1) return j({ error: "Service, link and quantity are required." }, 400);
       if (!/^https?:\/\/.+\..+/.test(link)) return j({ error: "Enter a valid link starting with http." }, 400);
 
@@ -92,7 +111,7 @@ Deno.serve(async (req) => {
       const disc = Math.min(100, Math.max(0, Number(me.discount_pct || 0)));
       let charge = Math.max(0, +(((rate / 1000) * qty * (100 - disc)) / 100).toFixed(4));
       let couponCode = "", couponOff = 0, couponId: number | null = null;
-      const couponIn = String(b.coupon_code || "").trim().toUpperCase();
+      const couponIn = S(b.coupon_code, 40).toUpperCase();
       if (couponIn) {
         const { data: cp } = await sb.from("coupons").select("*").eq("code", couponIn).single();
         if (!cp || !cp.active) return j({ error: "Coupon is invalid or disabled." }, 400);
@@ -201,7 +220,7 @@ Deno.serve(async (req) => {
     if (op === "funds.request") {
       const amt = Number(b.amount);
       const method = String(b.method || "").toLowerCase();
-      const ref = String(b.txn_ref || "").trim();
+      const ref = S(b.txn_ref, 160);
       const shot = String(b.screenshot_url || "").trim();
       if (!amt || amt < minDep) return j({ error: `Minimum deposit is ${minDep}.` }, 400);
       if (method === "upi") {
@@ -270,7 +289,7 @@ Deno.serve(async (req) => {
     if (op === "admin.order_create") {
       if (!admin) return j({ error: "Forbidden" }, 403);
       const uid = b.user_id, svcId = Number(b.service_id), qty = Number(b.quantity);
-      const link = String(b.link || "").trim();
+      const link = S(b.link, 1000);
       const { data: u } = await sb.from("profiles").select("*").eq("id", uid).single();
       if (!u) return j({ error: "User not found." }, 404);
       const { data: svc } = await sb.from("services").select("*, providers(*)").eq("id", svcId).single();
@@ -345,8 +364,8 @@ Deno.serve(async (req) => {
       }
       if (b.discount_pct !== undefined) patch.discount_pct = Math.min(100, Math.max(0, Number(b.discount_pct) || 0));
       if (b.order_limit !== undefined) patch.order_limit = Math.max(0, parseInt(b.order_limit) || 0);
-      if (b.note !== undefined) patch.note = String(b.note).slice(0, 500);
-      if (b.tags !== undefined) patch.tags = String(b.tags).slice(0, 200);
+      if (b.note !== undefined) patch.note = S(b.note, 500);
+      if (b.tags !== undefined) patch.tags = S(b.tags, 200);
       if (!Object.keys(patch).length) return j({ error: "Nothing to update." }, 400);
       await sb.from("profiles").update(patch).eq("id", uid);
       await log("user.update", u.email, patch);
@@ -355,7 +374,7 @@ Deno.serve(async (req) => {
 
     /* ======= referral.claim ======= */
     if (op === "referral.claim") {
-      const code = String(b.code || "").trim().toUpperCase();
+      const code = S(b.code, 40).toUpperCase();
       if (!code) return j({ error: "Enter a referral code." }, 400);
       if (me.referred_by) return j({ error: "You already used a referral code." }, 400);
       const { data: ref } = await sb.from("profiles").select("id,balance").eq("referral_code", code).single();
@@ -388,7 +407,7 @@ Deno.serve(async (req) => {
 
     /* ======= transfer.send ======= */
     if (op === "transfer.send") {
-      const toEmail = String(b.to_email || "").trim().toLowerCase();
+      const toEmail = S(b.to_email, 160).toLowerCase();
       const amt = +Number(b.amount || 0).toFixed(4);
       const minT = Number(cfg?.transfer_min || 0);
       const feePct = Math.min(50, Math.max(0, Number(cfg?.transfer_fee_pct || 0)));
@@ -432,8 +451,8 @@ Deno.serve(async (req) => {
     /* ======= broadcast.send (admin) ======= */
     if (op === "broadcast.send") {
       if (!admin) return j({ error: "Forbidden" }, 403);
-      const title = String(b.title || "").trim().slice(0, 120);
-      const body = String(b.body || "").trim().slice(0, 1000);
+      const title = S(b.title, 120);
+      const body = S(b.body, 1000);
       const segment = String(b.segment || "all");
       if (!title || !body) return j({ error: "Title and message are required." }, 400);
       let qq = sb.from("profiles").select("id").eq("status", "active");
@@ -459,7 +478,7 @@ Deno.serve(async (req) => {
       return j({ ok: true });
     }
     if (op === "account.set_email") {
-      const email = String(b.email || "").trim().toLowerCase();
+      const email = S(b.email, 160).toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return j({ error: "Enter a valid email." }, 400);
       const { data: taken } = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
       if (taken && taken.id !== meId) return j({ error: "Email is already in use." }, 400);
@@ -473,7 +492,7 @@ Deno.serve(async (req) => {
     if (op === "review.create") {
       const oid = Number(b.order_id);
       const rating = Math.min(5, Math.max(1, Number(b.rating) || 0));
-      const text = String(b.text || "").trim().slice(0, 500);
+      const text = S(b.text, 500);
       if (!oid || !rating) return j({ error: "Order and rating are required." }, 400);
       const { data: o } = await sb.from("orders").select("id,user_id,service_id,status").eq("id", oid).single();
       if (!o || o.user_id !== meId) return j({ error: "Order not found." }, 404);

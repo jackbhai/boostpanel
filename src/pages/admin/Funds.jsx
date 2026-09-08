@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { approveTopup, getAllTxns, listUsers, rejectTopup, flagTxn } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 import { downloadCSV } from '../../lib/csv'
@@ -21,17 +22,18 @@ export default function AdminFunds() {
   const [busy, setBusy] = useState(null)
   const [shot, setShot] = useState('')
 
-  const load = async () => {
+  const load = async (silent) => {
     try {
       const [t, u] = await Promise.all([getAllTxns(), listUsers()])
       setTxns(t || [])
       setUsers(u || [])
     } catch (e) {
-      toast(e.message, 'error')
+      if (!silent) toast(e.message, 'error')
     }
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('admin-txns', () => load(true))
 
   const umap = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u.email])), [users])
   const rows = useMemo(() => {

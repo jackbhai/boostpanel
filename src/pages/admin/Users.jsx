@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { adjustBalance, getUserOrders, listUsers, updateUserAdmin, mySessions } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 import { downloadCSV } from '../../lib/csv'
@@ -25,15 +26,16 @@ export default function AdminUsers() {
   const [spent, setSpent] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const load = async () => {
+  const load = async (silent) => {
     try {
       setUsers((await listUsers()) || [])
     } catch (e) {
-      toast(e.message, 'error')
+      if (!silent) toast(e.message, 'error')
     }
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('admin-users', () => load(true))
 
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()

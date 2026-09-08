@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Btn, EmptyState, PageHead, toast } from '../../components/ui'
 import { Bell, Check, Trash2 } from '../../components/icons'
 import { clearReadNotifs, deleteNotif, listNotifications, markAllNotifsRead, markNotifRead } from '../../lib/db'
+import { bus, useLiveEvent } from '../../lib/cache'
 import { timeAgo } from '../../lib/utils'
 import { useStore } from '../../lib/store'
 
@@ -20,24 +21,24 @@ export default function Notifications() {
 
   useEffect(() => {
     load()
-    const t = setInterval(() => load(true), 20000)
     const onFocus = () => load(true)
     window.addEventListener('focus', onFocus)
-    return () => { clearInterval(t); window.removeEventListener('focus', onFocus) }
+    return () => { window.removeEventListener('focus', onFocus) }
   }, [load])
+  useLiveEvent('notifs', () => load(true))
 
   const open = async (n) => {
     if (!n.read) {
       setList((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)))
-      try { await markNotifRead(n.id) } catch { /* ignore */ }
+      try { await markNotifRead(n.id); bus.emit('notifs') } catch { /* ignore */ }
     }
   }
   const markAll = async () => {
-    try { await markAllNotifsRead(user.id); setList((prev) => prev.map((x) => ({ ...x, read: true }))); toast('All marked as read') }
+    try { await markAllNotifsRead(user.id); setList((prev) => prev.map((x) => ({ ...x, read: true }))); bus.emit('notifs'); toast('All marked as read') }
     catch (err) { toast(err.message, 'error') }
   }
   const remove = async (n) => {
-    try { await deleteNotif(n.id); setList((prev) => prev.filter((x) => x.id !== n.id)) } catch (err) { toast(err.message, 'error') }
+    try { await deleteNotif(n.id); setList((prev) => prev.filter((x) => x.id !== n.id)); bus.emit('notifs') } catch (err) { toast(err.message, 'error') }
   }
   const clearRead = async () => {
     if (!window.confirm('Delete all read notifications?')) return

@@ -3,6 +3,7 @@ import {
   bridge, cancelOrder, getAllOrders, getCatalog, listUsers,
   manualOrder, refillOrder, setOrderStatus, orderEvents, orderNoteAdmin,
 } from '../../lib/db'
+import { useLiveEvent } from '../../lib/cache'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 import { downloadCSV } from '../../lib/csv'
@@ -33,18 +34,20 @@ export default function AdminOrders() {
   const [manual, setManual] = useState(false)
   const [m, setM] = useState({ user_id: '', service_id: '', link: '', quantity: '' })
 
-  const load = async () => {
+  const load = async (silent) => {
     try {
       const [o, u, c] = await Promise.all([getAllOrders(), listUsers(), getCatalog()])
       setOrders(o || [])
       setUsers(u || [])
       setServices(c.services || [])
     } catch (e) {
-      toast(e.message, 'error')
+      if (!silent) toast(e.message, 'error')
     }
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useLiveEvent('admin-orders', () => load(true))
+  useLiveEvent('catalog', () => load(true))
 
   const umap = useMemo(() => Object.fromEntries(users.map((u) => [u.id, u.email])), [users])
   const smap = useMemo(() => Object.fromEntries(services.map((s) => [s.id, s.name])), [services])

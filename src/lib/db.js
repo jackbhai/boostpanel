@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { apiKey, calcCharge } from './utils'
+import { bust, cached } from './cache'
+import { clean, cleanEmail } from './security'
 
 /* =====================================================================
    BoostPanel data layer — 100% REAL Supabase backend.
@@ -34,7 +36,7 @@ async function ensureProfile(user) {
 }
 
 export async function signUp(email, password) {
-  const { data, error } = await sb().auth.signUp({ email: email.trim(), password })
+  const { data, error } = await sb().auth.signUp({ email: cleanEmail(email), password })
   if (error) throw new Error(error.message)
   if (!data.session) return { needsVerification: true }
   const profile = await ensureProfile(data.user)
@@ -42,7 +44,7 @@ export async function signUp(email, password) {
 }
 
 export async function signIn(email, password) {
-  const { data, error } = await sb().auth.signInWithPassword({ email: email.trim(), password })
+  const { data, error } = await sb().auth.signInWithPassword({ email: cleanEmail(email), password })
   if (error) throw new Error(error.message)
   const profile = await ensureProfile(data.user)
   if (profile?.status === 'banned') {
@@ -63,7 +65,7 @@ export async function getSessionUser() {
 }
 
 export async function changePassword(newPw) {
-  if (!newPw || newPw.length < 6) throw new Error('New password must be at least 6 characters')
+  if (!newPw || newPw.length < 8) throw new Error('New password must be at least 8 characters')
   const { error } = await sb().auth.updateUser({ password: newPw })
   if (error) throw new Error(error.message)
 }
@@ -95,30 +97,38 @@ export async function adjustBalance(userId, delta, note = 'Manual adjustment') {
 /* ---------------------------- CATALOG ----------------------------- */
 
 export async function getCatalog() {
-  const [cats, svcs] = await Promise.all([
-    row(sb().from('categories').select('*').order('sort')),
-    row(sb().from('services').select('*').order('id')),
-  ])
-  return { categories: cats, services: svcs }
+  return cached('catalog', async () => {
+    const [cats, svcs] = await Promise.all([
+      row(sb().from('categories').select('*').order('sort')),
+      row(sb().from('services').select('*').order('id')),
+    ])
+    return { categories: cats, services: svcs }
+  }, 60000)
 }
 
 export async function saveCategory(cat) {
+  bust('catalog')
+  cat = { ...cat, name: clean(cat.name, 120) }
   if (cat.id) return row(sb().from('categories').update(cat).eq('id', cat.id).select().single())
   const { id, ...rest } = cat
   return row(sb().from('categories').insert(rest).select().single())
 }
 
 export async function deleteCategory(id) {
+  bust('catalog')
   await row(sb().from('categories').delete().eq('id', id))
 }
 
 export async function saveService(svc) {
+  bust('catalog')
+  svc = { ...svc, name: clean(svc.name, 200), description: clean(svc.description, 4000), platform: clean(svc.platform, 80), type: clean(svc.type, 80), quality: clean(svc.quality, 80), avg_time: clean(svc.avg_time, 40) }
   const { data } = await sb().from('services').select('id').eq('id', svc.id).maybeSingle()
   if (data) return row(sb().from('services').update(svc).eq('id', svc.id).select().single())
   return row(sb().from('services').insert(svc).select().single())
 }
 
 export async function deleteService(id) {
+  bust('catalog')
   await row(sb().from('services').delete().eq('id', id))
 }
 
@@ -319,19 +329,21 @@ export async function rejectTopup(txn) {
 /* ----------------------------- TICKETS ----------------------------- */
 
 export async function createTicket(userId, { subject, order_id, priority, message }) {
-  if (!subject?.trim() || !message?.trim()) throw new Error('Subject and message are required')
+  const subj = clean(subject, 140), body = clean(message, 4000)
+  if (!subj || !body) throw new Error('Subject and message are required')
   const ticket = await row(sb().from('tickets').insert({
-    user_id: userId, subject: subject.trim(), order_id: order_id || null,
+    user_id: userId, subject: subj, order_id: order_id || null,
     status: 'open', priority: priority || 'medium',
   }).select().single())
-  await addTicketMessage(ticket.id, userId, 'user', message.trim())
+  await addTicketMessage(ticket.id, userId, 'user', body)
   return ticket
 }
 
 export async function addTicketMessage(ticketId, senderId, senderRole, message) {
-  if (!message?.trim()) throw new Error('Message cannot be empty')
+  const body = clean(message, 4000)
+  if (!body) throw new Error('Message cannot be empty')
   const msg = await row(sb().from('ticket_messages').insert({
-    ticket_id: ticketId, sender_id: senderId, sender_role: senderRole, message: message.trim(),
+    ticket_id: ticketId, sender_id: senderId, sender_role: senderRole, message: body,
   }).select().single())
   await sb().from('tickets').update({ status: senderRole === 'admin' ? 'answered' : 'open' }).eq('id', ticketId)
   return msg
@@ -364,8 +376,9 @@ export async function getAnnouncements(activeOnly = true) {
 }
 
 export async function saveAnnouncement(ann) {
-  if (ann.id) return row(sb().from('announcements').update(ann).eq('id', ann.id).select().single())
-  return row(sb().from('announcements').insert(ann).select().single())
+  const a = { ...ann, title: clean(ann.title, 140), body: clean(ann.body, 4000) }
+  if (a.id) return row(sb().from('announcements').update(a).eq('id', a.id).select().single())
+  return row(sb().from('announcements').insert(a).select().single())
 }
 
 export async function deleteAnnouncement(id) {
@@ -383,12 +396,19 @@ const DEFAULT_SETTINGS = {
 }
 
 export async function getSettings() {
-  const { data } = await sb().from('settings').select('*').eq('id', 1).maybeSingle()
-  return { ...DEFAULT_SETTINGS, ...(data || {}) }
+  return cached('settings', async () => {
+    const { data } = await sb().from('settings').select('*').eq('id', 1).maybeSingle()
+    return { ...DEFAULT_SETTINGS, ...(data || {}) }
+  }, 60000)
 }
 
 export async function saveSettings(patch) {
-  return row(sb().from('settings').update(patch).eq('id', 1).select().single())
+  bust('settings')
+  const p2 = { ...patch }
+  for (const k of ['site_name', 'notice', 'support_email', 'upi_id', 'upi_payee', 'card_info', 'crypto_info', 'bank_info']) {
+    if (typeof p2[k] === 'string') p2[k] = clean(p2[k], 2000)
+  }
+  return row(sb().from('settings').update(p2).eq('id', 1).select().single())
 }
 
 /* ------------------------------ STATS ------------------------------ */
@@ -470,7 +490,7 @@ export async function toggleFavorite(userId, serviceId, on) {
 /* ════════════════ v4 · coupons / referrals / loyalty / notifications / reviews ════════════════ */
 export const listCoupons = () => row(sb().from('coupons').select('*').order('created_at', { ascending: false }))
 export const saveCoupon = (c) => {
-  const payload = { code: (c.code || '').toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }
+  const payload = { code: clean(c.code, 40).toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }
   const q = c.id ? sb().from('coupons').update(payload).eq('id', c.id) : sb().from('coupons').insert(payload)
   return row(q.select().single())
 }
@@ -479,15 +499,15 @@ export const toggleCoupon = (id, active) => row(sb().from('coupons').update({ ac
 export const claimReferral = (code) => secure('referral.claim', { code })
 export const myReferrals = (userId) => row(sb().from('referrals').select('*').eq('referrer_id', userId).order('created_at', { ascending: false }))
 export const convertLoyalty = (points) => secure('loyalty.convert', { points })
-export const sendTransfer = (to_email, amount) => secure('transfer.send', { to_email, amount })
+export const sendTransfer = (to_email, amount) => secure('transfer.send', { to_email: cleanEmail(to_email), amount })
 export const listNotifications = (userId, limit = 100) => row(sb().from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
 export const markNotifRead = (ids) => row(sb().from('notifications').update({ read: true }).in('id', Array.isArray(ids) ? ids : [ids]))
 export const markAllNotifsRead = (userId) => row(sb().from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false))
 export const deleteNotif = (id) => row(sb().from('notifications').delete().eq('id', id))
 export const clearReadNotifs = (userId) => row(sb().from('notifications').delete().eq('user_id', userId).eq('read', true))
-export const broadcastSend = (title, body, segment) => secure('broadcast.send', { title, body, segment })
+export const broadcastSend = (title, body, segment) => secure('broadcast.send', { title: clean(title, 120), body: clean(body, 1000), segment })
 export const broadcastHistory = () => row(sb().from('notifications').select('batch, title, body, created_at').eq('is_broadcast', true).order('created_at', { ascending: false }).limit(200))
-export const createReview = (order_id, rating, text) => secure('review.create', { order_id, rating, text })
+export const createReview = (order_id, rating, text) => secure('review.create', { order_id, rating, text: clean(text, 500) })
 export const myReviews = (userId) => row(sb().from('reviews').select('*').eq('user_id', userId).order('created_at', { ascending: false }))
 export const listApprovedReviews = (serviceId) => row(sb().from('reviews').select('rating, text, created_at').eq('service_id', serviceId).eq('approved', true).order('created_at', { ascending: false }).limit(50))
 export const reviewAggregate = () => row(sb().from('reviews').select('service_id, rating').eq('approved', true).limit(5000))
@@ -498,30 +518,31 @@ export const replyReview = (id, text) => row(sb().from('reviews').update({ admin
 export const rateTicket = (ticket_id, rating) => secure('ticket.rate', { ticket_id, rating })
 export const flagTxn = (txn_id, flagged, note) => secure('funds.flag', { txn_id, flagged, note })
 export const orderEvents = (orderId) => row(sb().from('order_events').select('*').eq('order_id', orderId).order('created_at', { ascending: true }))
-export const orderNoteAdmin = (orderId, text) => row(sb().from('order_events').insert({ order_id: orderId, event: 'note', detail: text }).select().single())
+export const orderNoteAdmin = (orderId, text) => row(sb().from('order_events').insert({ order_id: orderId, event: 'note', detail: clean(text, 2000) }).select().single())
 export const toggleServiceAdmin = (service_id, active) => secure('service.toggle', { service_id, active })
 export const deleteAccountSelf = () => secure('account.delete_self', { confirm: 'DELETE' })
+export const setEmailSelfClean = (email) => setEmailSelf(cleanEmail(email))
 export const setEmailSelf = (email) => secure('account.set_email', { email })
 
 /* ════════════════ v4 · content (faqs / macros / library / events) ════════════════ */
 export const listFaqs = () => row(sb().from('faqs').select('*').order('sort', { ascending: true }))
 export const listFaqsPublic = () => row(sb().from('faqs').select('*').eq('published', true).order('sort', { ascending: true }))
 export const saveFaq = (f) => {
-  const payload = { question: f.question, answer: f.answer, q: f.question, a: f.answer, category: f.category || 'General', published: !!f.published, sort: +f.sort || 0 }
+  const payload = { question: clean(f.question, 500), answer: clean(f.answer, 6000), q: clean(f.question, 500), a: clean(f.answer, 6000), category: f.category || 'General', published: !!f.published, sort: +f.sort || 0 }
   const q = f.id ? sb().from('faqs').update(payload).eq('id', f.id) : sb().from('faqs').insert(payload)
   return row(q.select().single())
 }
 export const deleteFaq = (id) => row(sb().from('faqs').delete().eq('id', id))
 export const listMacros = () => row(sb().from('macros').select('*').order('title'))
 export const saveMacro = (m) => {
-  const q = m.id ? sb().from('macros').update({ title: m.title, body: m.body }).eq('id', m.id) : sb().from('macros').insert({ title: m.title, body: m.body })
+  const q = m.id ? sb().from('macros').update({ title: clean(m.title, 120), body: clean(m.body, 2000) }).eq('id', m.id) : sb().from('macros').insert({ title: clean(m.title, 120), body: clean(m.body, 2000) })
   return row(q.select().single())
 }
 export const deleteMacro = (id) => row(sb().from('macros').delete().eq('id', id))
 export const listLibraryAdmin = () => row(sb().from('library').select('*').order('sort'))
 export const listLibraryPublic = () => row(sb().from('library').select('*').eq('published', true).order('sort'))
 export const saveLibrary = (l) => {
-  const payload = { title: l.title, body: l.body, category: l.category || 'Guide', published: !!l.published, sort: +l.sort || 0 }
+  const payload = { title: clean(l.title, 160), body: clean(l.body, 12000), category: l.category || 'Guide', published: !!l.published, sort: +l.sort || 0 }
   const q = l.id ? sb().from('library').update(payload).eq('id', l.id) : sb().from('library').insert(payload)
   return row(q.select().single())
 }
@@ -529,7 +550,7 @@ export const deleteLibrary = (id) => row(sb().from('library').delete().eq('id', 
 export const listEventsAdmin = () => row(sb().from('events').select('*').order('starts_at'))
 export const listEventsPublic = () => row(sb().from('events').select('*').eq('published', true).order('starts_at'))
 export const saveEvent = (e) => {
-  const payload = { title: e.title, body: e.body || '', starts_at: e.starts_at || null, ends_at: e.ends_at || null, published: !!e.published }
+  const payload = { title: clean(e.title, 160), body: clean(e.body, 6000) || '', starts_at: e.starts_at || null, ends_at: e.ends_at || null, published: !!e.published }
   const q = e.id ? sb().from('events').update(payload).eq('id', e.id) : sb().from('events').insert(payload)
   return row(q.select().single())
 }
@@ -548,3 +569,41 @@ export const balanceLogs = (providerId) => row(sb().from('provider_balance_logs'
 export const flaggedTxns = () => row(sb().from('transactions').select('*').eq('flagged', true).order('created_at', { ascending: false }).limit(200))
 export const searchOrdersAdmin = (term) => row(sb().from('orders').select('*').or(`link.ilike.%${term}%`).order('created_at', { ascending: false }).limit(50))
 export const searchUsersAdmin = (term) => row(sb().from('profiles').select('id, email, balance, role, status, created_at').or(`email.ilike.%${term}%,id.eq.${term}`).limit(20))
+
+/* ════════════════ v5 · TOTP two-factor auth (Supabase MFA) ════════════════ */
+export async function mfaFactors() {
+  const { data, error } = await sb().auth.mfa.listFactors()
+  if (error) throw new Error(error.message)
+  return data?.totp || data?.all || []
+}
+export async function mfaEnroll() {
+  const { data, error } = await sb().auth.mfa.enroll({ factorType: 'totp', friendlyName: 'BoostPanel' })
+  if (error) throw new Error(error.message)
+  return data
+}
+export async function mfaVerifyEnroll(factorId, code) {
+  const { error } = await sb().auth.mfa.challengeAndVerify({ factorId, code: String(code).trim() })
+  if (error) throw new Error(error.message || 'Invalid code')
+}
+export async function mfaUnenroll(factorId) {
+  const { error } = await sb().auth.mfa.unenroll({ factorId })
+  if (error) throw new Error(error.message)
+}
+export async function mfaAal() {
+  const { data, error } = await sb().auth.mfa.getAuthenticatorAssuranceLevel()
+  if (error) throw new Error(error.message)
+  return data
+}
+/** Verify TOTP code during login (aal1 → aal2 step-up). */
+export async function mfaVerifyLogin(code) {
+  const factors = await mfaFactors()
+  const f = factors.find((x) => x.status === 'verified') || factors[0]
+  if (!f) throw new Error('No 2FA method enrolled')
+  const { error } = await sb().auth.mfa.challengeAndVerify({ factorId: f.id, code: String(code).trim() })
+  if (error) throw new Error(error.message || 'Invalid 2FA code')
+}
+
+/* ════════════════ v5 · security event log + key rotation ════════════════ */
+export const logSecEvent = (userId, kind, detail = '') => row(sb().from('security_events').insert({ user_id: userId, kind, detail: String(detail).slice(0, 300) }))
+export const listSecEvents = (userId, limit = 15) => row(sb().from('security_events').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
+export const rotateApiKey = (userId) => regenerateApiKey(userId)

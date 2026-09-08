@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { getCatalog, getProfile, getSessionUser, getSettings, signIn, signOut, signUp } from './db'
+import { getCatalog, getProfile, getSessionUser, getSettings, logSecEvent, mfaAal, mfaVerifyLogin, mySessions, signIn, signOut, signUp, touchSession } from './db'
+import { deviceName } from './security'
 import { isConfigured } from './supabase'
 
 /** Global app state: session + profile + catalog + settings. */
@@ -52,11 +53,44 @@ export const useStore = create((set, get) => ({
     set({ authBusy: true })
     try {
       const { user, profile } = await signIn(email, password)
+      const aal = await mfaAal().catch(() => null)
+      if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') {
+        return { needsMfa: true }
+      }
       set({ user, profile })
+      get()._postAuth(user)
       return profile
     } finally {
       set({ authBusy: false })
     }
+  },
+
+  verifyMfa: async (code) => {
+    set({ authBusy: true })
+    try {
+      await mfaVerifyLogin(code)
+      const user = await getSessionUser()
+      const profile = user ? await getProfile(user.id).catch(() => null) : null
+      set({ user, profile })
+      if (user) get()._postAuth(user)
+      return profile
+    } finally {
+      set({ authBusy: false })
+    }
+  },
+
+  /** Fire-and-forget security trail — never blocks auth UX. */
+  _postAuth: (user) => {
+    (async () => {
+      try {
+        const dev = deviceName()
+        await logSecEvent(user.id, 'login', dev).catch(() => null)
+        const sess = await mySessions(user.id).catch(() => [])
+        const seen = (sess || []).some((s) => (s.device || '').split('·')[0].trim() === dev.split('·')[0].trim())
+        if (!seen) await logSecEvent(user.id, 'new_device', dev).catch(() => null)
+        await touchSession(user.id, dev).catch(() => null)
+      } catch { /* ignore */ }
+    })()
   },
 
   signup: async (email, password) => {
@@ -65,6 +99,7 @@ export const useStore = create((set, get) => ({
       const res = await signUp(email, password)
       if (res.needsVerification) return { needsVerification: true }
       set({ user: res.user, profile: res.profile })
+      if (res.user) get()._postAuth(res.user)
       return res.profile
     } finally {
       set({ authBusy: false })
