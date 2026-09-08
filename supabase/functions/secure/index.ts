@@ -21,6 +21,20 @@ const LIVE = ["pending", "in_progress", "processing"];
 const CANCELABLE = ["pending", "in_progress", "processing", "partial"];
 const FINAL = ["completed", "partial", "canceled", "refunded"];
 
+/** Call a Jack Bank gateway RPC (server-side: merchant secrets never reach the browser). */
+async function jbRpc(cfg: any, fn: string, body: Record<string, any>) {
+  const t0 = Date.now();
+  const r = await fetch(cfg.base_url.replace(/\/$/, "") + "/rest/v1/rpc/" + fn, {
+    method: "POST",
+    headers: { "apikey": cfg.anon_key, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
+  });
+  const ms = Date.now() - t0;
+  const data = await r.json().catch(() => null);
+  return { data, ms, http: r.status };
+}
+
 async function providerCall(p: any, action: string, extra: Record<string, any> = {}) {
   const body = new URLSearchParams({ key: p.api_key, action, ...extra });
   const r = await fetch(p.api_url.replace(/\/$/, ""), {
@@ -56,6 +70,7 @@ Deno.serve(async (req) => {
     "broadcast.send": [60, 3], "balance.adjust": [60, 20], "admin.order_create": [60, 20],
     "admin.order_set": [60, 60], "referral.claim": [60, 10], "loyalty.convert": [60, 10],
     "account.delete_self": [300, 3], "review.create": [60, 20], "ticket.rate": [60, 20],
+    "gateway.test": [60, 10], "gateway.create": [60, 10], "gateway.check": [60, 30], "gateway.status": [60, 60],
   };
   // S: server-side input hygiene (mirrors client clean())
   const S = (v: any, max = 2000) => String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/<\s*script/gi, "<blocked").replace(/javascript\s*:/gi, "blocked:").trim().slice(0, max);
@@ -526,6 +541,107 @@ Deno.serve(async (req) => {
       await sb.from("transactions").update({ flagged, flag_note: String(b.note || "").slice(0, 300) }).eq("id", tid);
       await log(flagged ? "funds.flag" : "funds.unflag", "txn #" + tid, {});
       return j({ ok: true });
+    }
+
+    /* ======= gateway.status — public enabled flag (no secrets) ======= */
+    if (op === "gateway.status") {
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      const on = !!(g?.enabled && g.api_key && g.api_secret && g.anon_key && g.base_url);
+      return j({ enabled: on });
+    }
+
+    /* ======= gateway.test (admin) — zero-side-effect key check ======= */
+    if (op === "gateway.test") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      const cfg = {
+        base_url: S(b.base_url || g?.base_url, 160) || "https://nksthsgrxudptwdbytoh.supabase.co",
+        anon_key: S(b.anon_key || g?.anon_key, 500),
+        api_key: S(b.api_key || g?.api_key, 200),
+        api_secret: S(b.api_secret || g?.api_secret, 200),
+      };
+      if (!cfg.anon_key || !cfg.api_key || !cfg.api_secret) return j({ working: false, error: "Fill base URL, anon key, API key and secret first." });
+      try {
+        const { data, ms } = await jbRpc(cfg, "jb_gateway_verify", {
+          p_api_key: cfg.api_key, p_api_secret: cfg.api_secret, p_order_ref: "BP-PROBE",
+        });
+        if (data?.ok) return j({ working: true, ms });
+        if (data?.error === "Order not found") return j({ working: true, ms });
+        if (data?.error === "Invalid API credentials") return j({ working: false, ms, error: "Keys rejected — check API key + secret." });
+        return j({ working: false, ms, error: data?.error || "Unexpected gateway response." });
+      } catch {
+        return j({ working: false, error: "Gateway unreachable — check base URL / network." });
+      }
+    }
+
+    /* ======= gateway.create — start an instant deposit ======= */
+    if (op === "gateway.create") {
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      if (!g?.enabled || !g.api_key || !g.api_secret || !g.anon_key || !g.base_url) {
+        return j({ error: "Jack Bank payments are disabled right now." }, 400);
+      }
+      const amt = +Number(b.amount || 0).toFixed(2);
+      if (!amt || amt < minDep) return j({ error: `Minimum deposit is ${minDep}.` }, 400);
+      const ref = `BP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      let pay_url = "";
+      try {
+        const { data } = await jbRpc(g, "jb_gateway_create_order", {
+          p_api_key: g.api_key, p_api_secret: g.api_secret,
+          p_order_ref: ref, p_amount: amt, p_note: `BoostPanel topup`,
+        });
+        if (!data?.ok) {
+          if (data?.error === "Invalid API credentials") return j({ error: "Payment gateway is misconfigured. Contact support." }, 502);
+          return j({ error: data?.error || "Gateway order failed." }, 502);
+        }
+        pay_url = data.order?.pay_url || "";
+        if (!pay_url) return j({ error: "Gateway did not return a pay link." }, 502);
+      } catch {
+        return j({ error: "Payment gateway unreachable. Try again." }, 502);
+      }
+      const { data: t } = await sb.from("transactions").insert({
+        user_id: meId, type: "credit", amount: amt, status: "pending",
+        method: "jackbank", txn_ref: ref, note: `Jack Bank instant deposit`,
+      }).select().single();
+      return j({ pay_url, order_ref: ref, txn_id: t.id, amount: amt });
+    }
+
+    /* ======= gateway.check — verify + auto-credit (idempotent) ======= */
+    if (op === "gateway.check") {
+      const { data: t } = await sb.from("transactions").select("*").eq("id", Number(b.txn_id)).single();
+      if (!t || t.method !== "jackbank" || (!admin && t.user_id !== meId)) return j({ error: "Payment not found." }, 404);
+      if (t.status === "approved") return j({ status: "paid", already: true });
+      if (t.status === "rejected") return j({ status: t.note?.includes("refund") ? "refunded" : "failed" });
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      if (!g?.api_key) return j({ error: "Gateway not configured." }, 400);
+      let data: any = null;
+      try {
+        ({ data } = await jbRpc(g, "jb_gateway_verify", {
+          p_api_key: g.api_key, p_api_secret: g.api_secret, p_order_ref: t.txn_ref,
+        }));
+      } catch {
+        return j({ error: "Gateway unreachable. Retry." }, 502);
+      }
+      const st = data?.ok ? String(data.status) : "";
+      if (!data?.ok) {
+        if (data?.error === "Order not found") return j({ status: "pending" });
+        return j({ error: data?.error || "Verify failed." }, 502);
+      }
+      if (st === "paid") {
+        if (Number(data.amount) < Number(t.amount)) return j({ error: "Amount mismatch. Contact support." }, 400);
+        const bonus = Math.min(100, Math.max(0, Number(cfg?.deposit_bonus_pct || 0)));
+        const credit = +(Number(t.amount) * (100 + bonus) / 100).toFixed(4);
+        const { data: u } = await sb.from("profiles").select("balance").eq("id", t.user_id).single();
+        await sb.from("profiles").update({ balance: Number(u?.balance || 0) + credit }).eq("id", t.user_id);
+        await sb.from("transactions").update({ status: "approved" }).eq("id", t.id);
+        await sb.from("notifications").insert({ user_id: t.user_id, title: "Deposit approved", body: `+${credit} via Jack Bank.` });
+        return j({ status: "paid", credited: credit });
+      }
+      if (["refunded", "failed", "expired"].includes(st)) {
+        await sb.from("transactions").update({ status: "rejected", note: `Jack Bank ${st}` }).eq("id", t.id);
+        await sb.from("notifications").insert({ user_id: t.user_id, title: "Jack Bank payment " + st, body: `Order ${t.txn_ref} was ${st}.` });
+        return j({ status: st });
+      }
+      return j({ status: "pending" });
     }
 
     return j({ error: "Unknown op: " + op }, 400);

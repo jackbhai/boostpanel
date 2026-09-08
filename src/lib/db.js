@@ -607,3 +607,11 @@ export async function mfaVerifyLogin(code) {
 export const logSecEvent = (userId, kind, detail = '') => row(sb().from('security_events').insert({ user_id: userId, kind, detail: String(detail).slice(0, 300) }))
 export const listSecEvents = (userId, limit = 15) => row(sb().from('security_events').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
 export const rotateApiKey = (userId) => regenerateApiKey(userId)
+
+/* ════════════════ v5 · Jack Bank gateway ════════════════ */
+export const gatewayStatus = () => secure('gateway.status', {})
+export const gatewayTest = (keys = {}) => secure('gateway.test', keys)
+export const gatewayCreate = (amount) => secure('gateway.create', { amount })
+export const gatewayCheck = (txn_id) => secure('gateway.check', { txn_id })
+export const getGatewayConfig = () => row(sb().from('gateway_config').select('*').eq('id', 1).maybeSingle())
+export const saveGatewayConfig = (patch) => row(sb().from('gateway_config').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1).select().single())

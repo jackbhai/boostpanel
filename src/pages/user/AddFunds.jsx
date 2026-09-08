@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, toast } from '../../components/ui'
-import { AlertCircle, BadgeIndianRupee, Bitcoin, CheckCircle2, Copy, CreditCard, RefreshCw, Upload, X } from '../../components/icons'
-import { requestTopup, uploadProof } from '../../lib/db'
+import { AlertCircle, BadgeIndianRupee, Bitcoin, CheckCircle2, Copy, CreditCard, ExternalLink, RefreshCw, Upload, Wallet, X } from '../../components/icons'
+import { gatewayCheck, gatewayCreate, gatewayStatus, requestTopup, uploadProof } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { isValidUtr, upiQrDataUrl, upiUrl } from '../../lib/upi'
+import { sfx } from '../../lib/sound'
 import { money } from '../../lib/utils'
 
 const QUICK_AMOUNTS = [100, 500, 1000, 2000, 5000]
 
 export default function AddFunds() {
-  const { user, profile, settings, currency } = useStore()
+  const { user, profile, settings, currency, refreshProfile } = useStore()
   const [method, setMethod] = useState('UPI')
   const [amount, setAmount] = useState('')
   const [qr, setQr] = useState(null)
@@ -21,6 +22,85 @@ export default function AddFunds() {
   const [preview, setPreview] = useState(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  /* Jack Bank instant flow */
+  const [gwOn, setGwOn] = useState(false)
+  const [gwBusy, setGwBusy] = useState(false)
+  const [gwPay, setGwPay] = useState(null)
+  const [gwState, setGwState] = useState('idle')
+  const pollRef = useRef(null)
+
+  useEffect(() => {
+    gatewayStatus().then((r) => setGwOn(!!r?.enabled)).catch(() => {})
+    return () => clearTimeout(pollRef.current)
+  }, [])
+
+  const stopPoll = () => clearTimeout(pollRef.current)
+
+  const pollGw = async (txnId, left) => {
+    if (left <= 0) {
+      setGwState('timeout')
+      return
+    }
+    try {
+      const r = await gatewayCheck(txnId)
+      if (r.status === 'paid') {
+        setGwState('paid')
+        setGwPay((p) => (p ? { ...p, credited: r.credited } : p))
+        sfx('coin')
+        refreshProfile()
+        toast(`Payment confirmed! Balance credited.`)
+        return
+      }
+      if (['refunded', 'failed', 'expired'].includes(r.status)) {
+        setGwState(r.status)
+        return
+      }
+    } catch { /* keep polling on transient errors */ }
+    pollRef.current = setTimeout(() => pollGw(txnId, left - 1), 4000)
+  }
+
+  const startGw = async () => {
+    const amt = Number(amount)
+    if (!amt || amt < min) return toast(`Minimum deposit is ${money(min, currency())}`, 'error')
+    setGwBusy(true)
+    try {
+      const r = await gatewayCreate(amt)
+      setGwPay(r)
+      setGwState('wait')
+      window.open(r.pay_url, '_blank', 'noopener')
+      pollGw(r.txn_id, 90)
+    } catch (err) {
+      toast(err.message, 'error')
+    } finally {
+      setGwBusy(false)
+    }
+  }
+
+  const checkGwNow = async () => {
+    if (!gwPay) return
+    try {
+      const r = await gatewayCheck(gwPay.txn_id)
+      if (r.status === 'paid') {
+        stopPoll()
+        setGwState('paid')
+        setGwPay((p) => ({ ...p, credited: r.credited }))
+        sfx('coin')
+        refreshProfile()
+        toast('Payment confirmed! Balance credited.')
+      } else if (['refunded', 'failed', 'expired'].includes(r.status)) {
+        stopPoll()
+        setGwState(r.status)
+      } else {
+        toast('Still pending — complete the payment in the opened page.', 'info')
+      }
+    } catch (err) { toast(err.message, 'error') }
+  }
+
+  const cancelGw = () => {
+    stopPoll()
+    setGwPay(null)
+    setGwState('idle')
+  }
 
   const min = Number(settings?.min_deposit || 100)
   const methods = [
@@ -28,6 +108,7 @@ export default function AddFunds() {
     settings?.pay_card && { id: 'Card', icon: CreditCard, label: 'Card', hint: 'Manual' },
     settings?.pay_crypto && { id: 'Crypto', icon: Bitcoin, label: 'Crypto', hint: 'USDT / BTC' },
     settings?.pay_bank && { id: 'Bank', icon: CreditCard, label: 'Bank', hint: 'NEFT / IMPS' },
+    gwOn && { id: 'JackBank', icon: Wallet, label: 'Jack Bank', hint: 'Instant' },
   ].filter(Boolean)
 
   const activeMethod = methods.find((m) => m.id === method) ? method : methods[0]?.id
@@ -153,7 +234,62 @@ export default function AddFunds() {
       <Input type="number" min={min} placeholder={`e.g. ${min}`} value={amount} onChange={(e) => { setAmount(e.target.value); setQr(null) }} />
 
       {/* 3 · Pay */}
-      {activeMethod === 'UPI' ? (
+      {activeMethod === 'JackBank' ? (
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/45">3 · Pay instantly</p>
+          {!gwPay ? (
+            <div className="card space-y-3 p-4 text-center">
+              <Wallet size={32} className="mx-auto text-violet-300" />
+              <p className="text-[13px] leading-relaxed text-white/60">
+                A secure Jack Bank payment page opens in a new tab. Pay there — your balance is credited here <b className="text-white">automatically</b>, no screenshot needed.
+              </p>
+              <Btn onClick={startGw} loading={gwBusy} className="w-full py-3">
+                Pay {amount ? money(Number(amount) || 0, currency()) : ''} with Jack Bank
+              </Btn>
+            </div>
+          ) : gwState === 'paid' ? (
+            <div className="card border-emerald-500/25 bg-emerald-500/5 p-5 text-center">
+              <CheckCircle2 size={36} className="mx-auto text-emerald-300" />
+              <p className="mt-2 font-bold text-white">Payment confirmed!</p>
+              <p className="mt-1 text-[13px] text-white/55">
+                +{money(gwPay.credited || gwPay.amount, currency())} added to your balance.
+              </p>
+              <p className="mt-1 font-mono text-[11px] text-white/35">{gwPay.order_ref}</p>
+              <Btn variant="ghost" onClick={cancelGw} className="mt-3 w-full !py-2 text-[13px]">Make another payment</Btn>
+            </div>
+          ) : ['refunded', 'failed', 'expired', 'timeout'].includes(gwState) ? (
+            <div className="card border-rose-500/25 bg-rose-500/5 p-5 text-center">
+              <AlertCircle size={32} className="mx-auto text-rose-300" />
+              <p className="mt-2 font-bold text-white">
+                {gwState === 'timeout' ? 'Timed out waiting' : `Payment ${gwState}`}
+              </p>
+              <p className="mt-1 text-[13px] text-white/55">
+                {gwState === 'timeout' ? 'If you already paid, tap check below or see Transactions.' : 'No money was taken. You can try again.'}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Btn variant="ghost" onClick={checkGwNow} className="flex-1 !py-2 text-[13px]">Check again</Btn>
+                <Btn onClick={cancelGw} className="flex-1 !py-2 text-[13px]">Try again</Btn>
+              </div>
+            </div>
+          ) : (
+            <div className="card space-y-3 border-violet-500/25 bg-violet-500/5 p-4 text-center">
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-[3px] border-violet-400/30 border-t-violet-300" />
+              <p className="text-sm font-bold text-white">Waiting for payment… {money(gwPay.amount, currency())}</p>
+              <p className="font-mono text-[11px] text-white/35">{gwPay.order_ref}</p>
+              <a href={gwPay.pay_url} target="_blank" rel="noreferrer" className="grad-btn flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white">
+                <ExternalLink size={15} /> Open payment page
+              </a>
+              <div className="flex gap-2">
+                <Btn variant="ghost" onClick={checkGwNow} className="flex-1 !py-2 text-[13px]">
+                  <RefreshCw size={14} /> I have paid — check
+                </Btn>
+                <Btn variant="ghost" onClick={cancelGw} className="flex-1 !py-2 text-[13px]">Cancel</Btn>
+              </div>
+              <p className="text-[11px] text-white/35">This page checks automatically every few seconds.</p>
+            </div>
+          )}
+        </div>
+      ) : activeMethod === 'UPI' ? (
         <div className="mt-4">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/45">3 · Scan and pay (amount auto-filled)</p>
           {!settings?.upi_id ? (
@@ -192,6 +328,7 @@ export default function AddFunds() {
       )}
 
       {/* 4 · Proof */}
+      {activeMethod !== 'JackBank' && (
       <form onSubmit={submit} className="mt-4 space-y-4">
         <p className="text-xs font-bold uppercase tracking-wide text-white/45">
           4 · Submit proof {activeMethod === 'UPI' ? '(12-digit UTR + screenshot)' : '(ref + screenshot)'}
@@ -230,6 +367,7 @@ export default function AddFunds() {
           Submit — I Have Paid {amount ? money(Number(amount) || 0, currency()) : ''}
         </Btn>
       </form>
+      )}
 
       {done && (
         <div className="card mt-4 border-emerald-500/25 bg-emerald-500/5 p-4 text-center">

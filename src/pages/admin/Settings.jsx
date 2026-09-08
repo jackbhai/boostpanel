@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Btn, Field, Input, Modal, PageHead, Textarea, toast } from '../../components/ui'
-import { Megaphone, Pencil, Plus, Settings as SettingsIcon, Trash2, Wallet } from '../../components/icons'
-import { deleteAnnouncement, getAnnouncements, getSettings, saveAnnouncement, saveSettings } from '../../lib/db'
+import { AlertCircle, CheckCircle2, KeyRound, Megaphone, Pencil, Plus, Settings as SettingsIcon, Trash2, Wallet } from '../../components/icons'
+import { deleteAnnouncement, gatewayTest, getAnnouncements, getGatewayConfig, getSettings, saveAnnouncement, saveGatewayConfig, saveSettings } from '../../lib/db'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store'
 import { timeAgo } from '../../lib/utils'
@@ -13,6 +13,87 @@ const EMPTY = {
   card_info: '', crypto_info: '', bank_info: '', signup_bonus: 0, deposit_bonus_pct: 0, maintenance: false,
   pay_bank: false, referral_reward: 0, loyalty_per_100: 0, loyalty_redeem_rate: 0,
   transfer_min: 0, transfer_fee_pct: 0, max_active_orders: 0, ticket_sla_hours: 24,
+}
+
+function GatewayCard() {
+  const [gw, setGw] = useState({ enabled: false, base_url: '', anon_key: '', api_key: '', api_secret: '' })
+  const [busy, setBusy] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [result, setResult] = useState(null)
+
+  useEffect(() => {
+    getGatewayConfig().then((g) => { if (g) setGw({ ...gw, ...g }) }).catch(() => {})
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    setBusy(true)
+    setResult(null)
+    try {
+      await saveGatewayConfig({
+        enabled: !!gw.enabled,
+        base_url: (gw.base_url || '').trim(),
+        anon_key: (gw.anon_key || '').trim(),
+        api_key: (gw.api_key || '').trim(),
+        api_secret: (gw.api_secret || '').trim(),
+      })
+      toast('Gateway settings saved!')
+    } catch (err) { toast(err.message, 'error') }
+    setBusy(false)
+  }
+
+  const test = async () => {
+    setTesting(true)
+    setResult(null)
+    try {
+      const r = await gatewayTest({
+        base_url: (gw.base_url || '').trim(),
+        anon_key: (gw.anon_key || '').trim(),
+        api_key: (gw.api_key || '').trim(),
+        api_secret: (gw.api_secret || '').trim(),
+      })
+      setResult(r.working ? { ok: true, text: `Working · answered in ${r.ms}ms` } : { ok: false, text: r.error || 'Keys rejected' })
+    } catch (err) { setResult({ ok: false, text: err.message }) }
+    setTesting(false)
+  }
+
+  return (
+    <div className="card mt-3 space-y-3 border-violet-500/25 p-4">
+      <p className="flex items-center gap-1.5 text-sm font-bold text-white"><KeyRound size={15} className="text-violet-300" /> Jack Bank Gateway</p>
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-[12px] leading-relaxed text-white/55">
+        Instant deposits via your Jack Bank merchant. Get keys: open <b className="text-white">Jack Bank admin → Gateway → Register merchant app</b>,
+        name it <b className="text-white">BoostPanel</b>, then paste the <b className="text-white">API key + secret</b> below. Payments land in your
+        merchant settlement balance; users get panel credit automatically.
+      </div>
+      <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
+        <span className="text-sm font-semibold text-white">Enable Jack Bank (instant)</span>
+        <input type="checkbox" checked={!!gw.enabled} onChange={(e) => setGw({ ...gw, enabled: e.target.checked })} className="h-5 w-5 accent-violet-500" />
+      </label>
+      <Field label="Gateway base URL">
+        <Input placeholder="https://nksthsgrxudptwdbytoh.supabase.co" value={gw.base_url || ''} onChange={(e) => setGw({ ...gw, base_url: e.target.value })} className="font-mono !text-[12px]" />
+      </Field>
+      <Field label="Gateway anon key (public)">
+        <Input placeholder="eyJhbGciOi…" value={gw.anon_key || ''} onChange={(e) => setGw({ ...gw, anon_key: e.target.value })} className="font-mono !text-[12px]" />
+      </Field>
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Merchant API key">
+          <Input placeholder="jk_live_…" value={gw.api_key || ''} onChange={(e) => setGw({ ...gw, api_key: e.target.value })} className="font-mono !text-[12px]" />
+        </Field>
+        <Field label="Merchant API secret">
+          <Input type="password" placeholder="jk_sec_…" value={gw.api_secret || ''} onChange={(e) => setGw({ ...gw, api_secret: e.target.value })} className="font-mono !text-[12px]" />
+        </Field>
+      </div>
+      {result && (
+        <div className={`flex items-center gap-2 rounded-xl border p-3 text-[13px] font-bold ${result.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}>
+          {result.ok ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+          {result.text}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Btn variant="ghost" onClick={test} loading={testing} className="flex-1">Test keys</Btn>
+        <Btn onClick={save} loading={busy} className="flex-1">Save gateway</Btn>
+      </div>
+    </div>
+  )
 }
 
 export default function AdminSettings() {
@@ -171,6 +252,8 @@ export default function AdminSettings() {
 
         <Btn type="submit" loading={busy} className="w-full">Save Settings</Btn>
       </form>
+
+      <GatewayCard />
 
       <div className="mb-2 mt-5 flex items-center justify-between">
         <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-white/45"><Megaphone size={13} /> Announcements</p>
