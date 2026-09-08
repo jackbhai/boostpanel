@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   bridge, cancelOrder, getAllOrders, getCatalog, listUsers,
-  manualOrder, refillOrder, setOrderStatus,
+  manualOrder, refillOrder, setOrderStatus, orderEvents, orderNoteAdmin,
 } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 import { downloadCSV } from '../../lib/csv'
 import {
   Badge, Btn, EmptyState, Input, Modal, PageHead,
-  SearchInput, Select, Skeleton, toast,
+  SearchInput, Select, Skeleton, Textarea, toast,
 } from '../../components/ui'
 import { Check, Download, LinkIcon, Pencil, Plus, RefreshCw, X } from '../../components/icons'
 
@@ -28,6 +28,8 @@ export default function AdminOrders() {
   const [edit, setEdit] = useState(null)
   const [editSt, setEditSt] = useState('')
   const [editRem, setEditRem] = useState('')
+  const [events, setEvents] = useState([])
+  const [note, setNote] = useState('')
   const [manual, setManual] = useState(false)
   const [m, setM] = useState({ user_id: '', service_id: '', link: '', quantity: '' })
 
@@ -58,6 +60,28 @@ export default function AdminOrders() {
   }, [orders, q, st, umap, smap])
 
   const toggle = (id) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+
+  useEffect(() => {
+    if (edit) { setNote(''); orderEvents(edit.id).then(setEvents).catch(() => setEvents([])) }
+  }, [edit])
+
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get('find')
+    if (f && orders.length && !edit) {
+      const o = orders.find((x) => String(x.id) === f)
+      if (o) { setEdit(o); setEditSt(o.status); setEditRem(o.remains ?? '') }
+    }
+  }, [orders])
+
+  const addNote = async () => {
+    if (!note.trim()) return
+    try {
+      await orderNoteAdmin(edit.id, note.trim())
+      setNote('')
+      setEvents(await orderEvents(edit.id))
+      toast('Note added to timeline')
+    } catch (e) { toast(e.message, 'error') }
+  }
 
   const run = async (key, fn) => {
     setBusy(key)
@@ -141,7 +165,7 @@ export default function AdminOrders() {
                     <span className="text-[13px] font-bold text-emerald-300">{money(o.charge, currency())}</span>
                     {o.provider_order_id && <span className="rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/40">prov: {o.provider_order_id}</span>}
                   </div>
-                  <p className="mt-1 truncate text-[13px] font-semibold text-white/85">{smap[o.service_id] || `Service ${o.service_id}`}</p>
+                  <p className="mt-1 truncate text-[13px] font-semibold text-white/105">{smap[o.service_id] || `Service ${o.service_id}`}</p>
                   <p className="truncate text-xs text-white/45">{umap[o.user_id] || o.user_id} · qty {o.quantity}{o.runs > 0 ? ` · drip ${o.runs}x/${o.interval_mins}m` : ''}</p>
                   <a href={o.link} target="_blank" rel="noreferrer" className="mt-0.5 flex items-center gap-1 text-xs text-violet-300 hover:text-violet-200">
                     <LinkIcon size={12} /><span className="truncate">{o.link}</span>
@@ -176,6 +200,27 @@ export default function AdminOrders() {
               <span className="mb-1 block text-xs font-bold text-white/60">Remains (0 when completed)</span>
               <Input value={editRem} onChange={(e) => setEditRem(e.target.value)} type="number" min="0" />
             </label>
+            <div>
+              <p className="mb-1.5 text-xs font-bold text-white/60">Timeline ({events.length})</p>
+              {events.length === 0 ? <p className="text-[12px] text-white/35">No events yet.</p> : (
+                <div className="max-h-40 space-y-0 overflow-y-auto rounded-xl border border-white/10 bg-black/30 p-2.5">
+                  {events.map((ev) => (
+                    <div key={ev.id} className="flex gap-2 border-l-2 border-violet-500/40 py-1 pl-2.5 text-[12px]">
+                      <span className="font-bold text-white/75">{ev.event}</span>
+                      <span className="flex-1 truncate text-white/45">{ev.detail || ''}</span>
+                      <span className="shrink-0 text-white/30">{new Date(ev.created_at).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-bold text-white/60">Internal note (only admins see)</p>
+              <div className="flex gap-2">
+                <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={1} placeholder="e.g. Called provider, will complete tonight" className="flex-1" />
+                <Btn onClick={addNote} disabled={!note.trim()} className={small}>Add</Btn>
+              </div>
+            </div>
             <Btn onClick={doSaveEdit} loading={busy === 'edit'} className="w-full">Save (server-side)</Btn>
           </div>
         </Modal>

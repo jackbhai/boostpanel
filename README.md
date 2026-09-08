@@ -121,3 +121,8 @@ with this project — grow real accounts with real content.
   `npx supabase functions deploy secure|provider-proxy` and
   `npx supabase functions deploy public-api --no-verify-jwt` (key-auth reseller API).
 - Apply `supabase/migration_v3.sql` (margins, discounts, limits, favorites, audit log).
+
+## v3 · 100+ features per panel (live)
+- **User:** coupons at checkout, referrals + rewards, loyalty points + convert, balance transfer, notifications center, reviews + ratings, price-drop alerts, API playground, analytics, library + events, help center, order timeline, mass-order templates, bank deposits, bonus preview, 6 app themes, email change, sessions, delete account, OTP login, forgot password.
+- **Admin:** coupons manager, broadcast center, reviews moderation, content CMS (FAQs/library/macros/events), API insight + balance history, risk center (duplicate UTR, bursts, flags), global search (Ctrl+K), order timeline + notes, user tags + sessions, SLA badges, provider latency, rewards/limits settings, announcement scheduling.
+- Money math stays server-side (`secure`): coupon validation, referral/loyalty/transfer/broadcast/review/ticket-rating/flag ops + max-active-orders cap.

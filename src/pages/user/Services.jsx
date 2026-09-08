@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, toast } from '../../components/ui'
-import { PlatformIcon, RefreshCcw, Search, Star } from '../../components/icons'
-import { getFavorites, toggleFavorite } from '../../lib/db'
+import { PlatformIcon, RefreshCcw, Search, Star, Bell, MessageCircle } from '../../components/icons'
+import { getFavorites, toggleFavorite, addAlert, deleteAlert, listApprovedReviews, myAlerts, reviewAggregate } from '../../lib/db'
 import { PLATFORM_COLOR } from '../../data/catalog'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
@@ -12,10 +12,25 @@ export default function Services() {
   const [cat, setCat] = useState('all')
   const [q, setQ] = useState('')
   const [favSet, setFavSet] = useState(new Set())
+  const [ratings, setRatings] = useState({})
+  const [reviewsFor, setReviewsFor] = useState(null)
+  const [reviews, setReviews] = useState([])
+  const [alerts, setAlerts] = useState([])
+  const [alertFor, setAlertFor] = useState(null)
+  const [alertPrice, setAlertPrice] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
     if (user) getFavorites(user.id).then((f) => setFavSet(new Set(f))).catch(() => {})
+    reviewAggregate().then((r) => {
+      const m = {}
+      for (const x of r || []) {
+        if (!m[x.service_id]) m[x.service_id] = { s: 0, n: 0 }
+        m[x.service_id].s += Number(x.rating); m[x.service_id].n++
+      }
+      setRatings(m)
+    }).catch(() => {})
+    if (user) myAlerts(user.id).then(setAlerts).catch(() => {})
   }, [user])
 
   const flipFav = async (id) => {
@@ -26,6 +41,27 @@ export default function Services() {
     } catch (e) {
       toast(e.message, 'error')
     }
+  }
+
+  const openReviews = async (s) => {
+    if (reviewsFor === s.id) { setReviewsFor(null); return }
+    setReviewsFor(s.id)
+    try { setReviews(await listApprovedReviews(s.id)) } catch { setReviews([]) }
+  }
+
+  const saveAlert = async (s) => {
+    if (!(Number(alertPrice) > 0)) return toast('Enter a target price', 'error')
+    try {
+      await addAlert(user.id, s.id, 'price_below', Number(alertPrice))
+      setAlerts(await myAlerts(user.id))
+      setAlertFor(null); setAlertPrice('')
+      toast('Price alert set! We will notify you on a drop.')
+    } catch (err) { toast(err.message, 'error') }
+  }
+
+  const removeAlert = async (id) => {
+    try { await deleteAlert(id); setAlerts(alerts.filter((a) => a.id !== id)); toast('Alert removed') }
+    catch (err) { toast(err.message, 'error') }
   }
 
   const list = useMemo(() => {
@@ -124,7 +160,34 @@ export default function Services() {
                     <span>Max {Number(s.max_qty).toLocaleString()}</span>
                     <span>{s.avg_time || '—'}</span>
                     {s.refill_days > 0 && <Badge status="active"><RefreshCcw size={10} /> {s.refill_days}d refill</Badge>}
+                    {ratings[s.id] && <span className="flex items-center gap-0.5 font-bold text-amber-300"><Star size={10} fill="currentColor" /> {(ratings[s.id].s / ratings[s.id].n).toFixed(1)} ({ratings[s.id].n})</span>}
                   </div>
+                  <div className="mt-2 flex gap-3" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => openReviews(s)} className="flex items-center gap-1 text-[12px] font-bold text-sky-300"><MessageCircle size={12} />Reviews{ratings[s.id] ? ` (${ratings[s.id].n})` : ''}</button>
+                    {(() => {
+                      const ex = alerts.find((a) => a.service_id === s.id && a.active !== false)
+                      return ex
+                        ? <button onClick={() => removeAlert(ex.id)} className="flex items-center gap-1 text-[12px] font-bold text-emerald-300"><Bell size={12} />Alert on — tap to off</button>
+                        : <button onClick={() => setAlertFor(s.id)} className="flex items-center gap-1 text-[12px] font-bold text-violet-300"><Bell size={12} />Price alert</button>
+                    })()}
+                  </div>
+                  {reviewsFor === s.id && (
+                    <div className="mt-2 space-y-1.5 rounded-xl border border-white/10 bg-black/30 p-3" onClick={(e) => e.stopPropagation()}>
+                      {reviews.length === 0 ? <p className="text-[12px] text-white/40">No reviews yet — be the first after your order completes.</p> : reviews.map((r, i) => (
+                        <div key={i} className="border-b border-white/10 pb-1.5 last:border-0">
+                          <span className="text-[13px] text-amber-300">{'★'.repeat(Number(r.rating))}<span className="text-white/20">{'★'.repeat(5 - Number(r.rating))}</span></span>
+                          {r.text && <p className="text-[12.5px] text-white/65">“{r.text}”</p>}
+                          <p className="text-[10.5px] text-white/30">{(r.profiles?.email || 'verified buyer').split('@')[0]} · verified order</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {alertFor === s.id && (
+                    <div className="mt-2 flex gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 p-2.5" onClick={(e) => e.stopPropagation()}>
+                      <input type="number" min="0" step="0.01" value={alertPrice} onChange={(e) => setAlertPrice(e.target.value)} placeholder={`Notify below ${s.rate}/1k`} className="w-full rounded-lg border border-white/10 bg-black/40 px-2.5 py-1.5 text-[13px] text-white outline-none" />
+                      <button onClick={() => saveAlert(s)} className="grad-btn shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-bold text-white">Set</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

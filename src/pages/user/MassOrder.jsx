@@ -11,6 +11,24 @@ export default function MassOrder() {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
+  const [coupon, setCoupon] = useState('')
+  const [tpls, setTpls] = useState(() => { try { return JSON.parse(localStorage.getItem('bp_mass_tpls') || '{}') } catch { return {} } })
+  const [tplName, setTplName] = useState('')
+
+  const saveTpl = () => {
+    if (!tplName.trim() || !text.trim()) return toast('Template name + lines required', 'error')
+    const n = { ...tpls, [tplName.trim()]: text }
+    setTpls(n)
+    try { localStorage.setItem('bp_mass_tpls', JSON.stringify(n)) } catch { /* ignore */ }
+    setTplName('')
+    toast('Template saved on this device')
+  }
+  const delTpl = (k) => {
+    const n = { ...tpls }
+    delete n[k]
+    setTpls(n)
+    try { localStorage.setItem('bp_mass_tpls', JSON.stringify(n)) } catch { /* ignore */ }
+  }
   const navigate = useNavigate()
 
   const lines = useMemo(() => {
@@ -40,13 +58,16 @@ export default function MassOrder() {
     setBusy(true)
     let ok = 0
     const errors = []
+    let couponSent = !coupon.trim()
     for (const l of lines) {
       if (l.error) {
         errors.push(`#${l.id}: ${l.error}`)
         continue
       }
       try {
-        await placeOrder(user.id, l.svc, l.link, l.qty)
+        const opts = couponSent ? {} : { coupon_code: coupon.trim() }
+        couponSent = true
+        await placeOrder(user.id, l.svc, l.link, l.qty, opts)
         ok++
       } catch (err) {
         errors.push(`#${l.id}: ${err.message}`)
@@ -106,6 +127,30 @@ export default function MassOrder() {
           <p className={`text-lg font-bold ${total <= Number(profile?.balance || 0) ? 'text-emerald-300' : 'text-rose-300'}`}>
             {money(profile?.balance, currency())}
           </p>
+        </div>
+      </div>
+
+      <div className="card mt-3 space-y-2.5 p-4">
+        <div>
+          <p className="mb-1 text-[12px] font-bold text-white/60">Coupon — applies to the first order of this batch</p>
+          <input value={coupon} onChange={(e) => setCoupon(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} placeholder="Optional code" className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 font-mono text-[14px] tracking-widest text-white outline-none placeholder:text-white/30" />
+        </div>
+        <div>
+          <p className="mb-1 text-[12px] font-bold text-white/60">Line templates — saved on this device</p>
+          <div className="flex gap-2">
+            <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Template name" className="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2 text-[13px] text-white outline-none placeholder:text-white/30" />
+            <button onClick={saveTpl} className="shrink-0 rounded-xl bg-white/10 px-3.5 py-2 text-[13px] font-bold text-white">Save</button>
+          </div>
+          {Object.keys(tpls).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Object.keys(tpls).map((k) => (
+                <span key={k} className="flex items-center gap-1 rounded-full border border-white/10 bg-white/10 py-1 pl-3 pr-1 text-[12px] font-bold text-white/70">
+                  <button onClick={() => { setText(tpls[k]); setResult(null) }}>{k}</button>
+                  <button onClick={() => delTpl(k)} aria-label={`Delete ${k}`} className="rounded-full px-1.5 text-white/35 hover:text-rose-300">×</button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

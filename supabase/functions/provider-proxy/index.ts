@@ -84,11 +84,14 @@ Deno.serve(async (req: Request) => {
     if (action === 'balance') {
       needAdmin()
       const p = await getProvider(Number(body.provider_id))
+      const t0 = Date.now()
       const res = await providerCall(p.api_url, p.api_key, 'balance')
+      const ms = Date.now() - t0
       if (res?.error) throw new Error(`Provider: ${res.error}`)
       const balance = Number(res.balance ?? 0)
-      await db.from('providers').update({ balance, currency: res.currency || '', last_sync: new Date().toISOString() }).eq('id', p.id)
-      return json({ balance, currency: res.currency || '' })
+      await db.from('providers').update({ balance, currency: res.currency || '', last_sync: new Date().toISOString(), last_latency_ms: ms }).eq('id', p.id)
+      await db.from('provider_balance_logs').insert({ provider_id: p.id, balance, currency: res.currency || '' })
+      return json({ balance, currency: res.currency || '', latency_ms: ms })
     }
 
     /* ============ services (admin) ============ */
@@ -229,6 +232,7 @@ Deno.serve(async (req: Request) => {
     /* ============ resync (admin): re-apply stored margins on fresh provider rates ============ */
     if (action === 'resync') {
       needAdmin()
+      const t0rs = Date.now()
       const { data: prov } = await db.from('providers').select('*').eq('id', body.provider_id).single()
       if (!prov) throw new Error('Provider not found')
       let remote: any
@@ -252,7 +256,20 @@ Deno.serve(async (req: Request) => {
         updated++
         if (changes.length < 50) changes.push({ id: l.id, cost: c, rate: nr })
       }
-      return json({ ok: true, provider: prov.name, checked: (locals || []).length, updated, remote_count: list.length, changes })
+      let alerts = 0
+      for (const ch of changes) {
+        const { data: subs } = await db.from('service_alerts').select('id,user_id,threshold').eq('service_id', ch.id).eq('kind', 'price_below').eq('active', true)
+        for (const s of subs || []) {
+          if (Number(s.threshold) > 0 && ch.rate <= Number(s.threshold)) {
+            const { data: sn } = await db.from('services').select('name').eq('id', ch.id).single()
+            await db.from('notifications').insert({ user_id: s.user_id, title: 'Price drop alert', body: `${sn?.name || 'Service #' + ch.id} is now ${ch.rate}/1k (target ${s.threshold}).` })
+            await db.from('service_alerts').update({ triggered_at: new Date().toISOString() }).eq('id', s.id)
+            alerts++
+          }
+        }
+      }
+      await db.from('providers').update({ last_sync: new Date().toISOString(), last_latency_ms: Date.now() - t0rs }).eq('id', prov.id)
+      return json({ ok: true, provider: prov.name, checked: (locals || []).length, updated, remote_count: list.length, alerts, changes })
     }
 
     /* ============ refill / cancel (owner or admin) ============ */

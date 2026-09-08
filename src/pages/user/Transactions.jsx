@@ -1,7 +1,8 @@
+import { downloadCSV } from '../../lib/csv'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton, toast } from '../../components/ui'
-import { ArrowDownLeft, ArrowUpRight, Receipt } from '../../components/icons'
+import { ArrowDownLeft, ArrowUpRight, Receipt, Download } from '../../components/icons'
 import { getUserTxns } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
@@ -11,12 +12,13 @@ export default function Transactions() {
   const [txns, setTxns] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [stFilter, setStFilter] = useState('all')
 
   useEffect(() => {
     getUserTxns(user.id).then(setTxns).catch((e) => toast(e.message, 'error')).finally(() => setLoading(false))
   }, [])
 
-  const list = useMemo(() => txns.filter((t) => filter === 'all' || t.type === filter), [txns, filter])
+  const list = useMemo(() => txns.filter((t) => (filter === 'all' || t.type === filter) && (stFilter === 'all' || t.status === stFilter)), [txns, filter, stFilter])
   const inflow = txns.filter((t) => t.type === 'credit' && t.status === 'approved').reduce((s, t) => s + Number(t.amount), 0)
   const outflow = txns.filter((t) => t.type === 'debit' && t.status === 'approved').reduce((s, t) => s + Number(t.amount), 0)
 
@@ -57,6 +59,13 @@ export default function Transactions() {
             {f.icon && <f.icon size={14} />} {f.label}
           </button>
         ))}
+      </div>
+
+      <div className="mt-2 flex gap-2">
+        {['all', 'approved', 'pending', 'rejected'].map((s) => (
+          <button key={s} onClick={() => setStFilter(s)} className={`flex-1 rounded-xl px-2 py-1.5 text-[12px] font-bold capitalize ${stFilter === s ? 'bg-white/15 text-white' : 'bg-white/10 text-white/45'}`}>{s}</button>
+        ))}
+        <button onClick={() => downloadCSV('transactions.csv', list)} className="flex items-center gap-1 rounded-xl bg-white/10 px-3 py-1.5 text-[12px] font-bold text-white/60"><Download size={13} />CSV</button>
       </div>
 
       <div className="mt-3 space-y-2.5">

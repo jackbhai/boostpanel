@@ -12,6 +12,7 @@ export default function NewOrder() {
   const [serviceId, setServiceId] = useState('')
   const [link, setLink] = useState('')
   const [qty, setQty] = useState('')
+  const [coupon, setCoupon] = useState('')
   const [runs, setRuns] = useState('')
   const [intervalMins, setIntervalMins] = useState('')
   const [busy, setBusy] = useState(false)
@@ -34,13 +35,13 @@ export default function NewOrder() {
     if (!service) return toast('Please select a service', 'error')
     setBusy(true)
     try {
-      const { order, forwarded, provider_error } = await placeOrder(user.id, service, link.trim(), qtyNum, { runs: Number(runs) || 0, interval_mins: Number(intervalMins) || 0 })
+      const { order, forwarded, provider_error, discount } = await placeOrder(user.id, service, link.trim(), qtyNum, { runs: Number(runs) || 0, interval_mins: Number(intervalMins) || 0, coupon_code: coupon.trim() })
       await refreshProfile()
       toast(forwarded
         ? `Order #${order.id} placed and sent to provider`
         : provider_error
           ? `Order #${order.id} placed. ${provider_error}`
-          : `Order #${order.id} placed. ${money(order.charge, currency())} deducted.`)
+          : `Order #${order.id} placed. ${money(order.charge, currency())} deducted${discount ? ` (coupon saved ${money(discount, currency())})` : ''}.`)
       navigate('/orders')
     } catch (err) {
       toast(err.message, 'error')
@@ -131,6 +132,10 @@ export default function NewOrder() {
             {Number(runs) > 0 && <p className="text-[12px] text-white/45">Quantity will be split into {runs} runs, {intervalMins || 0} min apart.</p>}
           </div>
         ) : null}
+
+        <Field label="Coupon code (optional)" hint="Validated on our server — invalid codes are rejected.">
+          <Input placeholder="e.g. DIWALI20" value={coupon} onChange={(e) => setCoupon(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))} className="font-mono tracking-widest" />
+        </Field>
 
         {/* Live bill */}
         <div className="card flex items-center justify-between p-4">

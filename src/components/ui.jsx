@@ -48,7 +48,7 @@ export function Btn({ variant = 'primary', className = '', loading, disabled, ch
   const styles = {
     primary: 'grad-btn text-white shadow-lg shadow-violet-600/30 hover:opacity-90',
     ghost: 'bg-white/5 text-white border border-white/10 hover:bg-white/10',
-    subtle: 'bg-white/5 text-white/80 hover:bg-white/10',
+    subtle: 'bg-white/5 text-white/100 hover:bg-white/10',
     danger: 'bg-rose-600/90 text-white hover:bg-rose-600',
     success: 'bg-emerald-600/90 text-white hover:bg-emerald-600',
   }

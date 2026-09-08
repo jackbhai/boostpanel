@@ -2,7 +2,7 @@ import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Textarea, toast } from '../../components/ui'
 import { ClipboardList, Pencil, PlatformIcon, Plug, Plus, Power, Trash2 } from '../../components/icons'
-import { deleteCategory, deleteService, listProviders, saveCategory, saveService } from '../../lib/db'
+import { deleteCategory, deleteService, listProviders, saveCategory, saveService, toggleServiceAdmin } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 
@@ -79,12 +79,18 @@ export default function AdminServices() {
 
   const toggleSvc = async (s) => {
     try {
-      await saveService({ ...s, active: !(s.active !== false) })
+      const r = await toggleServiceAdmin(s.id, !(s.active !== false))
+      toast(r?.notified ? `Live! ${r.notified} waiting user(s) notified.` : (r?.active ? 'Service is live.' : 'Hidden from users.'))
       refreshCatalog()
     } catch (err) {
       toast(err.message, 'error')
     }
   }
+
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get('find')
+    if (f) setQ(f)
+  }, [])
 
   /* ---------- bulk margin ---------- */
 

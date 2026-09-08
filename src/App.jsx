@@ -5,7 +5,13 @@ import { Toasts } from './components/ui'
 import { Plug } from './components/icons'
 import { useStore } from './lib/store'
 import { Login, Signup } from './pages/auth'
+import AdminBroadcast from './pages/admin/Broadcast'
+import AdminContent from './pages/admin/Content'
+import AdminCoupons from './pages/admin/Coupons'
 import AdminDashboard from './pages/admin/Dashboard'
+import AdminInsight from './pages/admin/Insight'
+import AdminReviews from './pages/admin/Reviews'
+import AdminRisk from './pages/admin/Risk'
 import AdminFunds from './pages/admin/Funds'
 import AdminLogs from './pages/admin/Logs'
 import AdminOrders from './pages/admin/Orders'
@@ -15,10 +21,16 @@ import AdminSettings from './pages/admin/Settings'
 import AdminTickets from './pages/admin/Tickets'
 import AdminUsers from './pages/admin/Users'
 import AddFunds from './pages/user/AddFunds'
+import Analytics from './pages/user/Analytics'
 import ApiDocs from './pages/user/ApiDocs'
 import Dashboard from './pages/user/Dashboard'
+import Help from './pages/user/Help'
+import Library from './pages/user/Library'
 import MassOrder from './pages/user/MassOrder'
 import More from './pages/user/More'
+import Notifications from './pages/user/Notifications'
+import Playground from './pages/user/Playground'
+import Rewards from './pages/user/Rewards'
 import NewOrder from './pages/user/NewOrder'
 import Orders from './pages/user/Orders'
 import Profile from './pages/user/Profile'
@@ -96,6 +108,12 @@ export default function App() {
             <Route path="/tickets" element={<Tickets />} />
             <Route path="/tickets/:id" element={<TicketDetail />} />
             <Route path="/api" element={<ApiDocs />} />
+            <Route path="/playground" element={<Playground />} />
+            <Route path="/rewards" element={<Rewards />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="/library" element={<Library />} />
+            <Route path="/help" element={<Help />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/more" element={<More />} />
           </Route>
@@ -113,6 +131,12 @@ export default function App() {
             <Route path="/admin/tickets" element={<AdminTickets />} />
             <Route path="/admin/tickets/:id" element={<AdminTicketDetail />} />
             <Route path="/admin/logs" element={<AdminLogs />} />
+            <Route path="/admin/coupons" element={<AdminCoupons />} />
+            <Route path="/admin/broadcast" element={<AdminBroadcast />} />
+            <Route path="/admin/reviews" element={<AdminReviews />} />
+            <Route path="/admin/content" element={<AdminContent />} />
+            <Route path="/admin/insight" element={<AdminInsight />} />
+            <Route path="/admin/risk" element={<AdminRisk />} />
             <Route path="/admin/settings" element={<AdminSettings />} />
           </Route>
         </Route>

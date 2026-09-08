@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { adjustBalance, getUserOrders, listUsers, updateUserAdmin } from '../../lib/db'
+import { adjustBalance, getUserOrders, listUsers, updateUserAdmin, mySessions } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
 import { downloadCSV } from '../../lib/csv'
@@ -19,7 +19,8 @@ export default function AdminUsers() {
   const [rf, setRf] = useState('all')
   const [sf, setSf] = useState('all')
   const [sel, setSel] = useState(null)
-  const [form, setForm] = useState({ role: 'user', status: 'active', discount_pct: 0, order_limit: 0, note: '' })
+  const [form, setForm] = useState({ role: 'user', status: 'active', discount_pct: 0, order_limit: 0, note: '', tags: '' })
+  const [sessions, setSessions] = useState([])
   const [adj, setAdj] = useState({ delta: '', note: '' })
   const [spent, setSpent] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -46,7 +47,9 @@ export default function AdminUsers() {
 
   const open = async (u) => {
     setSel(u)
-    setForm({ role: u.role, status: u.status, discount_pct: u.discount_pct || 0, order_limit: u.order_limit || 0, note: u.note || '' })
+    setForm({ role: u.role, status: u.status, discount_pct: u.discount_pct || 0, order_limit: u.order_limit || 0, note: u.note || '', tags: u.tags || '' })
+    setSessions([])
+    mySessions(u.id).then(setSessions).catch(() => {})
     setAdj({ delta: '', note: '' })
     setSpent(null)
     try {
@@ -54,6 +57,14 @@ export default function AdminUsers() {
       setSpent({ n: o.length, total: o.reduce((a, x) => a + Number(x.charge || 0), 0) })
     } catch { setSpent({ n: 0, total: 0 }) }
   }
+
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get('find')
+    if (f && users.length) {
+      const u = users.find((x) => String(x.id) === f)
+      if (u) open(u)
+    }
+  }, [users])
 
   const save = async () => {
     setBusy(true)
@@ -104,7 +115,7 @@ export default function AdminUsers() {
         <Select value={sf} onChange={(e) => setSf(e.target.value)} className="sm:w-36">
           <option value="all">All status</option><option value="active">Active</option><option value="banned">Banned</option>
         </Select>
-        <Btn variant="ghost" onClick={() => downloadCSV('users.csv', rows.map((u) => ({ email: u.email, balance: u.balance, role: u.role, status: u.status, discount: u.discount_pct, limit: u.order_limit, joined: u.created_at })))} className={small}><Download size={14} />CSV</Btn>
+        <Btn variant="ghost" onClick={() => downloadCSV('users.csv', rows.map((u) => ({ email: u.email, balance: u.balance, role: u.role, status: u.status, discount: u.discount_pct, limit: u.order_limit, tags: u.tags || '', note: u.note || '', joined: u.created_at })))} className={small}><Download size={14} />CSV</Btn>
       </div>
       <p className="mb-3 text-xs text-white/40">{rows.length} users · tap a row to manage.</p>
       {rows.length === 0 ? <EmptyState title="No users found" /> : (
@@ -155,6 +166,21 @@ export default function AdminUsers() {
             </div>
             <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Private note (only admins see)</span>
               <Input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="e.g. VIP reseller, pays monthly" /></label>
+            <label className="block"><span className="mb-1 block text-xs font-bold text-white/60">Tags (comma separated — “vip” powers the VIP broadcast segment)</span>
+              <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="e.g. vip, reseller" /></label>
+            <div>
+              <p className="mb-1.5 text-xs font-bold text-white/60">Login sessions ({sessions.length})</p>
+              {sessions.length === 0 ? <p className="text-[12px] text-white/35">No sessions recorded yet.</p> : (
+                <div className="space-y-1">
+                  {sessions.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between rounded-lg bg-white/5 px-2.5 py-1.5 text-[12px] text-white/60">
+                      <span className="truncate">{s.device || 'Unknown device'}</span>
+                      <span className="shrink-0 text-white/35">{new Date(s.last_seen).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <Btn onClick={save} loading={busy} className="flex-1"><Pencil size={15} />Save user</Btn>
               {sel.status === 'active'

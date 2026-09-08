@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Btn, PageHead, toast } from '../../components/ui'
-import { AlertCircle, Copy, RefreshCw, Sparkles } from '../../components/icons'
-import { regenerateApiKey } from '../../lib/db'
+import { AlertCircle, Copy, RefreshCw, Sparkles, Zap } from '../../components/icons'
+import { myApiLogs, regenerateApiKey } from '../../lib/db'
 import { useStore } from '../../lib/store'
 
 function Code({ children }) {
@@ -15,6 +16,7 @@ function Code({ children }) {
 export default function ApiDocs() {
   const { user, profile, refreshProfile } = useStore()
   const [busy, setBusy] = useState(false)
+  const [calls, setCalls] = useState([])
 
   const copy = () => {
     navigator.clipboard.writeText(profile?.api_key || '').then(
@@ -37,6 +39,10 @@ export default function ApiDocs() {
     }
   }
 
+  useEffect(() => {
+    if (user) myApiLogs(user.id, 200).then(setCalls).catch(() => {})
+  }, [user])
+
   return (
     <div>
       <PageHead title="API Docs" sub="Automate orders from your own app." />
@@ -52,6 +58,21 @@ export default function ApiDocs() {
         </div>
         <p className="mt-2 flex items-start gap-1.5 text-[11px] text-white/35">
           <AlertCircle size={13} className="mt-0.5 shrink-0" /> Never share your key publicly. It can spend your balance.
+        </p>
+      </div>
+
+      <Link to="/playground" className="card mt-3 flex items-center gap-3 border-violet-500/30 bg-violet-500/10 p-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200"><Zap size={20} /></span>
+        <span className="flex-1">
+          <span className="block text-[14px] font-bold text-white">Try the API Playground</span>
+          <span className="block text-[12px] text-white/45">Send live requests with your key</span>
+        </span>
+      </Link>
+
+      <div className="card mt-3 p-4">
+        <p className="text-[13px] font-bold text-white">Your usage</p>
+        <p className="mt-0.5 text-[12.5px] text-white/50">
+          {calls.length ? `${calls.length} call(s) logged · ${calls.filter((c) => c.ok !== false).length} succeeded · ${calls.filter((c) => c.ok === false).length} failed` : 'No API calls yet.'}
         </p>
       </div>
 

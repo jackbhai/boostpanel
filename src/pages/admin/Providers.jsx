@@ -76,7 +76,7 @@ export default function AdminProviders() {
     setTesting(`rs${p.id}`)
     try {
       const r = await resyncProvider(p.id)
-      toast(`Resynced ${p.name}: ${r.updated}/${r.checked} rates updated, margins kept.`)
+      toast(`Resynced ${p.name}: ${r.updated}/${r.checked} updated, margins kept${r.alerts ? `, ${r.alerts} price alert(s) sent` : ''}.`)
       refreshCatalog()
     } catch (err) {
       toast(err.message, 'error')
@@ -140,8 +140,8 @@ export default function AdminProviders() {
 
       <div className="card flex items-start gap-2 border-sky-500/25 bg-sky-500/5 p-3.5 text-[12px] leading-relaxed text-white/60">
         <Plug size={16} className="mt-0.5 shrink-0 text-sky-300" />
-        <p><b className="text-white/85">How it works:</b> add your provider's API URL + key →
-        Test → Import services with your margin → user orders forward <b className="text-white/85">automatically</b>,
+        <p><b className="text-white/105">How it works:</b> add your provider's API URL + key →
+        Test → Import services with your margin → user orders forward <b className="text-white/105">automatically</b>,
         status syncs back. Standard Perfect Panel API (action=add/status/services…).</p>
       </div>
 
@@ -163,6 +163,7 @@ export default function AdminProviders() {
               <span className="flex items-center gap-1"><Wallet size={13} /> {money(p.balance, p.currency ? `${p.currency} ` : currency())}</span>
               <span className="flex items-center gap-1"><LinkIcon size={13} /> {mappedCount(p.id)} mapped</span>
               {p.last_sync && <span>synced {timeAgo(p.last_sync)}</span>}
+              {p.last_latency_ms != null && <span className={p.last_latency_ms > 5000 ? 'font-bold text-amber-300' : ''}>{p.last_latency_ms} ms</span>}
             </div>
             <div className="mt-3 grid grid-cols-4 gap-1.5">
               <button onClick={() => test(p)} disabled={testing === p.id} className="flex items-center justify-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 py-2 text-[12px] font-bold text-emerald-300 disabled:opacity-50">
@@ -245,7 +246,7 @@ export default function AdminProviders() {
                         className="mt-0.5 h-4 w-4 accent-violet-500"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium text-white/85">
+                        <span className="block truncate text-[13px] font-medium text-white/105">
                           <span className="mr-1 font-mono text-[11px] text-violet-300">#{s.service}</span>{s.name}
                         </span>
                         <span className="block text-[11px] text-white/40">

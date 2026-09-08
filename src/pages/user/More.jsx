@@ -1,14 +1,20 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { Btn, PageHead } from '../../components/ui'
-import { Box, ChevronRight, LogOut, Plug, Receipt, Shield, Ticket, User, Wallet } from '../../components/icons'
+import { Bell, Box, ChevronRight, ClipboardList, LifeBuoy, LogOut, Plug, Receipt, Shield, Star, Ticket, TrendingUp, User, Wallet, Zap } from '../../components/icons'
 import { useStore } from '../../lib/store'
 
 const LINKS = [
   { to: '/mass-order', icon: Box, label: 'Mass Order', hint: 'Bulk ordering' },
-  { to: '/funds', icon: Wallet, label: 'Add Funds', hint: 'UPI · Card · Crypto' },
+  { to: '/funds', icon: Wallet, label: 'Add Funds', hint: 'UPI · Card · Crypto · Bank' },
   { to: '/transactions', icon: Receipt, label: 'Transactions', hint: 'Payment history' },
   { to: '/tickets', icon: Ticket, label: 'Support Tickets', hint: 'Get help' },
   { to: '/api', icon: Plug, label: 'API Docs', hint: 'For resellers' },
+  { to: '/playground', icon: Zap, label: 'API Playground', hint: 'Test API live' },
+  { to: '/rewards', icon: Star, label: 'Rewards', hint: 'Refer · loyalty · transfer' },
+  { to: '/notifications', icon: Bell, label: 'Notifications', hint: 'Order + promo alerts' },
+  { to: '/analytics', icon: TrendingUp, label: 'Analytics', hint: 'Spend insights' },
+  { to: '/library', icon: ClipboardList, label: 'Library', hint: 'Guides + events' },
+  { to: '/help', icon: LifeBuoy, label: 'Help Center', hint: 'FAQs + support' },
   { to: '/profile', icon: User, label: 'Profile & Settings', hint: 'Account' },
 ]
 
@@ -55,7 +61,7 @@ export default function More() {
       </div>
 
       <div className="card mt-3 p-4 text-[12px] leading-relaxed text-white/45">
-        <p className="font-bold text-white/70">{settings?.site_name || 'BoostPanel'} · v2.0</p>
+        <p className="font-bold text-white/70">{settings?.site_name || 'BoostPanel'} · v3.0</p>
         <p className="mt-1 flex items-center gap-1.5">
           <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
           Backend: Supabase Live (secure cloud database)

@@ -2,8 +2,8 @@ import { AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, Select, Skeleton, Textarea, toast } from '../../components/ui'
-import { ArrowLeft, Lock, Send, Shield, Ticket as TicketIcon, User } from '../../components/icons'
-import { addTicketMessage, createTicket, getTicketWithMessages, getUserTickets, setTicketStatus } from '../../lib/db'
+import { ArrowLeft, Lock, Send, Shield, Ticket as TicketIcon, User, Star } from '../../components/icons'
+import { addTicketMessage, createTicket, getTicketWithMessages, getUserTickets, setTicketStatus, listMacros, rateTicket } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { shortId, timeAgo } from '../../lib/utils'
 
@@ -118,6 +118,8 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
   const [reply, setReply] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [macros, setMacros] = useState([])
+  const [rating, setRating] = useState(0)
   const navigate = useNavigate()
 
   const load = () => {
@@ -135,6 +137,10 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
       .finally(() => setLoading(false))
   }
   useEffect(load, [id])
+
+  useEffect(() => {
+    if (role === 'admin') listMacros().then(setMacros).catch(() => {})
+  }, [role])
 
   const send = async (e) => {
     e.preventDefault()
@@ -206,12 +212,17 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
       </div>
 
       {role === 'admin' && ticket.status !== 'closed' && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
-          {CANNED.map((c) => (
-            <button key={c.slice(0, 24)} onClick={() => setReply(c)} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-left text-[11px] text-white/60 hover:border-violet-500/40 hover:text-white">
-              {c.slice(0, 44)}…
-            </button>
-          ))}
+        <div className="mt-4">
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-white/35">
+            Quick replies{macros.length ? ` — ${macros.length} from library` : ' — defaults (add more in Content)'}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {(macros.length ? macros : CANNED.map((c) => ({ title: c.slice(0, 32), body: c }))).map((mc, i) => (
+              <button key={i} onClick={() => setReply(mc.body)} title={mc.body} className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-left text-[11px] font-bold text-white/60 hover:border-violet-500/40 hover:text-white">
+                {(mc.title || mc.body).slice(0, 34)}{(mc.title || mc.body).length > 34 ? '…' : ''}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       {ticket.status !== 'closed' ? (
@@ -227,9 +238,35 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
           </button>
         </form>
       ) : (
-        <p className="mt-4 flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-center text-[13px] text-white/45">
-          <Lock size={14} /> This ticket is closed. {role === 'user' ? 'Open a new ticket if you need more help.' : ''}
-        </p>
+        <div>
+          {role === 'user' && !ticket.satisfaction ? (
+            <div className="card mt-4 p-4 text-center">
+              <p className="text-[13px] font-bold text-white">How was our support?</p>
+              <div className="mt-2 flex justify-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <button key={i} onClick={() => setRating(i)} aria-label={`${i} stars`}>
+                    <Star size={30} className={i <= rating ? 'text-amber-300' : 'text-white/20'} fill={i <= rating ? 'currentColor' : 'none'} />
+                  </button>
+                ))}
+              </div>
+              {rating > 0 && (
+                <button
+                  onClick={async () => { try { await rateTicket(ticket.id, rating); toast('Thanks for rating!'); load() } catch (e) { toast(e.message, 'error') } }}
+                  className="grad-btn mt-2.5 rounded-xl px-5 py-2 text-[13px] font-bold text-white"
+                >
+                  Submit {rating}/5
+                </button>
+              )}
+            </div>
+          ) : ticket.satisfaction > 0 ? (
+            <p className="mt-4 text-center text-[12.5px] text-white/45">
+              {role === 'user' ? 'You rated this ticket' : 'User rated'} <b className="text-amber-300">{ticket.satisfaction}/5</b>
+            </p>
+          ) : null}
+          <p className="mt-3 flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-center text-[13px] text-white/45">
+            <Lock size={14} /> This ticket is closed. {role === 'user' ? 'Open a new ticket if you need more help.' : ''}
+          </p>
+        </div>
       )}
     </div>
   )

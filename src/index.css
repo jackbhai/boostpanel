@@ -84,3 +84,29 @@ input[type="number"]::-webkit-inner-spin-button {
 .live-dot {
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
+
+/* ══════════ v3 · accent themes + polish ══════════ */
+:root { --accent1: #8b5cf6; --accent2: #d946ef; }
+[data-accent="sky"] { --accent1: #0ea5e9; --accent2: #6366f1; }
+[data-accent="emerald"] { --accent1: #10b981; --accent2: #0ea5e9; }
+[data-accent="amber"] { --accent1: #f59e0b; --accent2: #ef4444; }
+[data-accent="rose"] { --accent1: #f43f5e; --accent2: #a855f7; }
+[data-accent="orange"] { --accent1: #f97316; --accent2: #eab308; }
+[data-accent] .grad-btn { background-image: linear-gradient(135deg, var(--accent1), var(--accent2)) !important; }
+[data-accent] .grad-text {
+  background-image: linear-gradient(120deg, var(--accent1), var(--accent2)) !important;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+::selection { background: color-mix(in srgb, var(--accent1) 45%, transparent); color: #fff; }
+* { -webkit-tap-highlight-color: transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #26262e; border-radius: 8px; border: 2px solid #000; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a44; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input:focus, textarea:focus, select:focus { outline: none; }
+.card { animation: cardIn 0.25s ease; }
+@keyframes cardIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .card { animation: none; } }

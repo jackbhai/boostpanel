@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
-import { Ticket, User } from '../../components/icons'
+import { Ticket, User, Clock, Star } from '../../components/icons'
 import { getAllTickets, listUsers } from '../../lib/db'
+import { useStore } from '../../lib/store'
 import { shortId, timeAgo } from '../../lib/utils'
 
 export default function AdminTickets() {
@@ -11,6 +12,7 @@ export default function AdminTickets() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
+  const { settings } = useStore()
 
   useEffect(() => {
     Promise.all([getAllTickets(), listUsers().catch(() => [])])
@@ -55,6 +57,13 @@ export default function AdminTickets() {
               </div>
             </div>
             <p className="mt-1 text-sm font-semibold text-white">{t.subject}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {t.satisfaction > 0 && <span className="flex items-center gap-0.5 text-[11px] font-bold text-amber-300"><Star size={11} fill="currentColor" /> {t.satisfaction}/5</span>}
+              {t.status !== 'closed' && Number(settings?.ticket_sla_hours) > 0 && (Date.now() - new Date(t.created_at).getTime()) > Number(settings.ticket_sla_hours) * 3600000 && (
+                <span className="flex items-center gap-0.5 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-300"><Clock size={10} /> SLA breach</span>
+              )}
+              {t.assigned_to && <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-[10px] font-bold text-sky-300">asg: {String(t.assigned_to).slice(0, 6)}</span>}
+            </div>
             <p className="mt-1 flex items-center gap-1 text-[11px] text-white/35">
               <User size={11} /> {emailOf(t.user_id)} · {t.order_id ? `Order #${t.order_id} · ` : ''}Updated {timeAgo(t.updated_at)}
             </p>

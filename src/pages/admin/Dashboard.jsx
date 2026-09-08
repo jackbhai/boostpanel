@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge, EmptyState, PageHead, Skeleton, Stat, toast } from '../../components/ui'
-import { Box, ClipboardList, Clock, Plug, Receipt, Settings, ShoppingCart, Ticket, Users, Wallet } from '../../components/icons'
-import { getAdminStats, getAllOrders } from '../../lib/db'
+import { Box, ClipboardList, Clock, Layers, Megaphone, Plug, Receipt, Settings, Shield, ShoppingCart, Star, Tag, Ticket, TrendingUp, Users, Wallet } from '../../components/icons'
+import { getAdminStats, getAllOrders, listReviewsAdmin } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
 
@@ -14,6 +14,12 @@ const MANAGE = [
   { to: '/admin/providers', icon: Plug, label: 'API' },
   { to: '/admin/funds', icon: Wallet, label: 'Funds' },
   { to: '/admin/tickets', icon: Ticket, label: 'Tickets' },
+  { to: '/admin/coupons', icon: Tag, label: 'Coupons' },
+  { to: '/admin/broadcast', icon: Megaphone, label: 'Broadcast' },
+  { to: '/admin/reviews', icon: Star, label: 'Reviews' },
+  { to: '/admin/content', icon: Layers, label: 'Content' },
+  { to: '/admin/insight', icon: TrendingUp, label: 'Insight' },
+  { to: '/admin/risk', icon: Shield, label: 'Risk' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
   { to: '/admin/logs', icon: Receipt, label: 'Logs' },
 ]
@@ -24,13 +30,15 @@ export default function AdminDashboard() {
   const { currency } = useStore()
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState([])
+  const [pendingReviews, setPendingReviews] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getAllOrders()])
-      .then(([s, orders]) => {
+    Promise.all([getAdminStats(), getAllOrders(), listReviewsAdmin().catch(() => [])])
+      .then(([s, orders, reviews]) => {
         setStats(s)
         setRecent(orders.slice(0, 5))
+        setPendingReviews((reviews || []).filter((r) => !r.approved).length)
       })
       .catch((e) => toast(e.message, 'error'))
       .finally(() => setLoading(false))
@@ -101,10 +109,15 @@ export default function AdminDashboard() {
         {MANAGE.map((m) => (
           <Link key={m.to} to={m.to} className="card card-hover relative flex flex-col items-center gap-1.5 px-2 py-4">
             <m.icon size={26} className="text-violet-300" />
-            <span className="text-[12px] font-semibold text-white/80">{m.label}</span>
+            <span className="text-[12px] font-semibold text-white/100">{m.label}</span>
             {m.to === '/admin/funds' && stats?.pendingFunds > 0 && (
               <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-black">
                 {stats.pendingFunds}
+              </span>
+            )}
+            {m.to === '/admin/reviews' && pendingReviews > 0 && (
+              <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-500 px-1 text-[10px] font-bold text-white">
+                {pendingReviews}
               </span>
             )}
             {m.to === '/admin/tickets' && stats?.openTickets > 0 && (

@@ -27,6 +27,7 @@ export default function AddFunds() {
     settings?.pay_upi !== false && { id: 'UPI', icon: BadgeIndianRupee, label: 'UPI', hint: 'GPay / PhonePe' },
     settings?.pay_card && { id: 'Card', icon: CreditCard, label: 'Card', hint: 'Manual' },
     settings?.pay_crypto && { id: 'Crypto', icon: Bitcoin, label: 'Crypto', hint: 'USDT / BTC' },
+    settings?.pay_bank && { id: 'Bank', icon: CreditCard, label: 'Bank', hint: 'NEFT / IMPS' },
   ].filter(Boolean)
 
   const activeMethod = methods.find((m) => m.id === method) ? method : methods[0]?.id
@@ -101,7 +102,7 @@ export default function AddFunds() {
     )
   }
 
-  const manualInfo = activeMethod === 'Card' ? settings?.card_info : activeMethod === 'Crypto' ? settings?.crypto_info : ''
+  const manualInfo = activeMethod === 'Card' ? settings?.card_info : activeMethod === 'Crypto' ? settings?.crypto_info : activeMethod === 'Bank' ? settings?.bank_info : ''
 
   return (
     <div>
@@ -111,6 +112,12 @@ export default function AddFunds() {
         <p className="text-sm text-white/60">Current balance</p>
         <p className="text-xl font-extrabold text-emerald-300">{money(profile?.balance, currency())}</p>
       </div>
+
+      {Number(settings?.deposit_bonus_pct) > 0 && (
+        <div className="card mt-3 border-emerald-500/30 bg-emerald-500/10 p-3 text-center text-[13px] font-bold text-emerald-200">
+          Limited time: +{settings.deposit_bonus_pct}% bonus on every deposit{amount && Number(amount) > 0 ? ` — pay ${money(Number(amount), currency())}, get ${money(Number(amount) * (1 + Number(settings.deposit_bonus_pct) / 100), currency())}` : ''}
+        </div>
+      )}
 
       {/* 1 · Method */}
       <p className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-white/45">1 · Payment method</p>

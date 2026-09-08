@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import GlobalSearch from './GlobalSearch'
 import { useStore } from '../lib/store'
 import {
-  ClipboardList, Home, LogOut, Plug, Receipt, Rocket, Settings,
-  ShoppingCart, Ticket, Users, Wallet, X,
+  ClipboardList, Home, Layers, LogOut, Megaphone, Plug, Receipt, Rocket, Search, Settings,
+  Shield, ShoppingCart, Star, Tag, Ticket, TrendingUp, Users, Wallet, X,
 } from './icons'
 
 const LINKS = [
@@ -13,6 +15,12 @@ const LINKS = [
   { to: '/admin/services', label: 'Services', icon: ClipboardList },
   { to: '/admin/providers', label: 'API / Providers', icon: Plug },
   { to: '/admin/tickets', label: 'Tickets', icon: Ticket },
+  { to: '/admin/coupons', label: 'Coupons', icon: Tag },
+  { to: '/admin/broadcast', label: 'Broadcast', icon: Megaphone },
+  { to: '/admin/reviews', label: 'Reviews', icon: Star },
+  { to: '/admin/content', label: 'Content', icon: Layers },
+  { to: '/admin/insight', label: 'API Insight', icon: TrendingUp },
+  { to: '/admin/risk', label: 'Risk Center', icon: Shield },
   { to: '/admin/logs', label: 'Activity Logs', icon: Receipt },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]
@@ -20,6 +28,15 @@ const LINKS = [
 export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
   const { logout } = useStore()
   const navigate = useNavigate()
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearchOpen(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const close = () => setMobileOpen(false)
   const out = async () => {
@@ -40,6 +57,11 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
           <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-amber-300">Admin Console</span>
         </span>
       </button>
+      <div className="px-3 pb-2">
+        <button onClick={() => setSearchOpen(true)} className="flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-[13px] font-semibold text-white/40 transition hover:border-violet-500/40 hover:text-white/70">
+          <Search size={16} /> Search… <kbd className="ml-auto rounded bg-white/10 px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
+        </button>
+      </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
         {LINKS.map((l) => (
           <NavLink
@@ -93,6 +115,7 @@ export default function AdminSidebar({ mobileOpen, setMobileOpen }) {
           </aside>
         </div>
       )}
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </>
   )
 }

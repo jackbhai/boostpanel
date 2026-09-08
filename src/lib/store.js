@@ -30,6 +30,11 @@ export const useStore = create((set, get) => ({
       ])
       let profile = null
       if (user) profile = await getProfile(user.id).catch(() => null)
+      try {
+        const a = profile?.accent || localStorage.getItem('bp_accent') || 'violet'
+        localStorage.setItem('bp_accent', a)
+        document.documentElement.dataset.accent = a
+      } catch { /* ignore */ }
       set({
         user: profile ? user : null,
         profile,

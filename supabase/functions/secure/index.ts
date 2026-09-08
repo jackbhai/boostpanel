@@ -87,16 +87,36 @@ Deno.serve(async (req) => {
         if ((today || 0) >= me.order_limit) return j({ error: `Daily order limit reached (${me.order_limit}). Contact support to raise it.` }, 429);
       }
 
-      // server-side price: fresh rate × quantity × user discount
+      // server-side price: fresh rate x quantity x user discount x coupon
       const rate = Number(svc.rate);
       const disc = Math.min(100, Math.max(0, Number(me.discount_pct || 0)));
-      const charge = Math.max(0, +(((rate / 1000) * qty * (100 - disc)) / 100).toFixed(4));
+      let charge = Math.max(0, +(((rate / 1000) * qty * (100 - disc)) / 100).toFixed(4));
+      let couponCode = "", couponOff = 0, couponId: number | null = null;
+      const couponIn = String(b.coupon_code || "").trim().toUpperCase();
+      if (couponIn) {
+        const { data: cp } = await sb.from("coupons").select("*").eq("code", couponIn).single();
+        if (!cp || !cp.active) return j({ error: "Coupon is invalid or disabled." }, 400);
+        if (cp.expires_at && new Date(cp.expires_at).getTime() < Date.now()) return j({ error: "Coupon is expired." }, 400);
+        if (Number(cp.max_uses) > 0 && Number(cp.used) >= Number(cp.max_uses)) return j({ error: "Coupon usage limit reached." }, 400);
+        if (Number(cp.min_charge) > 0 && charge < Number(cp.min_charge)) return j({ error: `This coupon needs a minimum order of ${cp.min_charge}.` }, 400);
+        const { data: already } = await sb.from("coupon_uses").select("id").eq("coupon_id", cp.id).eq("user_id", meId).maybeSingle();
+        if (already) return j({ error: "You have already used this coupon." }, 400);
+        couponOff = cp.kind === "pct" ? +(charge * Number(cp.value) / 100).toFixed(4) : Math.min(charge, Number(cp.value));
+        couponCode = cp.code; couponId = cp.id;
+        charge = Math.max(0, +(charge - couponOff).toFixed(4));
+      }
       if (Number(me.balance) < charge) return j({ error: "Insufficient balance. Please add funds." }, 400);
+      const maxActive = Number(cfg?.max_active_orders || 0);
+      if (maxActive > 0) {
+        const { count: activeCount } = await sb.from("orders").select("id", { count: "exact", head: true }).eq("user_id", meId).in("status", ["pending", "in_progress", "processing"]);
+        if ((activeCount || 0) >= maxActive) return j({ error: `You already have ${maxActive} active orders. Wait for delivery before ordering more.` }, 400);
+      }
 
       const { data: upd } = await sb.from("profiles").update({ balance: Number(me.balance) - charge })
         .eq("id", meId).select("balance").single();
       const { data: order, error: oe } = await sb.from("orders").insert({
         user_id: meId, service_id: svcId, link, quantity: qty, charge,
+        coupon_code: couponCode, discount_amt: couponOff,
         status: "pending", remains: qty, start_count: 0,
         provider_id: svc.provider_id || null,
         runs: svc.provider_id ? runs : 0, interval_mins: svc.provider_id ? interval : 0,
@@ -106,8 +126,20 @@ Deno.serve(async (req) => {
       await sb.from("transactions").insert({
         user_id: meId, type: "debit", amount: charge, method: "order",
         txn_ref: `ORD-${onum}`, status: "approved",
-        note: `Order #${onum} — ${svc.name}`,
+        note: `Order #${onum} — ${svc.name}${couponCode ? ` (coupon ${couponCode} −${couponOff})` : ""}`,
       });
+      if (couponId) {
+        await sb.from("coupon_uses").insert({ coupon_id: couponId, user_id: meId, order_id: onum, amount: couponOff });
+        const { data: cc } = await sb.from("coupons").select("used").eq("id", couponId).single();
+        await sb.from("coupons").update({ used: Number(cc?.used || 0) + 1 }).eq("id", couponId);
+      }
+      let loyaltyEarned = 0;
+      const lp100 = Number(cfg?.loyalty_per_100 || 0);
+      if (lp100 > 0 && charge > 0) {
+        loyaltyEarned = Math.floor((charge * lp100) / 100);
+        if (loyaltyEarned > 0) await sb.from("profiles").update({ loyalty_points: Number(me.loyalty_points || 0) + loyaltyEarned }).eq("id", meId);
+      }
+      await sb.from("order_events").insert({ order_id: onum, event: "created", detail: `${svc.name} x ${qty}` });
 
       // auto-forward to provider
       let forwarded = false, ferr = "";
@@ -120,10 +152,11 @@ Deno.serve(async (req) => {
             forwarded = true;
             await sb.from("orders").update({ provider_order_id: String(r.order), status: "in_progress" }).eq("id", order.id);
             order.provider_order_id = String(r.order); order.status = "in_progress";
+            await sb.from("order_events").insert({ order_id: order.id, event: "forwarded", detail: `Provider order ${r.order}` });
           } else ferr = typeof r?.error === "string" ? r.error : "Provider rejected the order";
         } catch { ferr = "Provider unreachable — order kept as pending, admin will review."; }
       }
-      return j({ order, charge, balance: upd?.balance ?? null, forwarded, provider_error: ferr || undefined });
+      return j({ order, charge, balance: upd?.balance ?? null, forwarded, provider_error: ferr || undefined, coupon: couponCode || undefined, discount: couponOff || undefined, loyalty_earned: loyaltyEarned || undefined });
     }
 
     /* ═══════ order.cancel — server-side refund ═══════ */
@@ -142,6 +175,8 @@ Deno.serve(async (req) => {
       const { data: u } = await sb.from("profiles").select("balance").eq("id", o.user_id).single();
       await sb.from("profiles").update({ balance: Number(u?.balance || 0) + Number(o.charge) }).eq("id", o.user_id);
       await sb.from("transactions").insert({ user_id: o.user_id, type: "credit", amount: Number(o.charge), method: "refund", txn_ref: `ORD-${o.id}`, status: "approved", note: `Refund for order #${o.id}` });
+      await sb.from("order_events").insert({ order_id: o.id, event: "canceled", detail: msg });
+      await sb.from("notifications").insert({ user_id: o.user_id, title: `Order #${o.id} canceled`, body: `Refunded ${o.charge}. ${msg}` });
       if (admin) await log("order.cancel", "#" + o.id);
       return j({ ok: true, message: msg });
     }
@@ -158,6 +193,7 @@ Deno.serve(async (req) => {
         if (prov) { try { await providerCall(prov, "refill", { id: o.provider_order_id }); } catch { /* keep local */ } }
       }
       await sb.from("orders").update({ status: "in_progress", remains: o.quantity }).eq("id", o.id);
+      await sb.from("order_events").insert({ order_id: o.id, event: "refill", detail: "Refill requested" });
       return j({ ok: true });
     }
 
@@ -177,6 +213,9 @@ Deno.serve(async (req) => {
       } else if (method === "crypto") {
         if (!cfg?.pay_crypto) return j({ error: "Crypto deposits are disabled right now." }, 400);
         if (!ref) return j({ error: "Transaction hash / reference is required." }, 400);
+      } else if (method === "bank") {
+        if (!cfg?.pay_bank) return j({ error: "Bank deposits are disabled right now." }, 400);
+        if (!ref) return j({ error: "Bank reference / UTR is required." }, 400);
       } else return j({ error: "Unknown payment method." }, 400);
       if (!shot) return j({ error: "Payment screenshot is required." }, 400);
       const { data: t } = await sb.from("transactions").insert({
@@ -194,6 +233,7 @@ Deno.serve(async (req) => {
       if (!t || t.type !== "credit" || t.status !== "pending") return j({ error: "Deposit not found or already reviewed." }, 404);
       if (op === "funds.reject") {
         await sb.from("transactions").update({ status: "rejected" }).eq("id", t.id);
+        await sb.from("notifications").insert({ user_id: t.user_id, title: "Deposit rejected", body: `Your deposit of ${t.amount} was rejected. Contact support.` });
         await log("funds.reject", "txn #" + t.id, { user: t.user_id, amount: t.amount });
         return j({ ok: true });
       }
@@ -202,6 +242,7 @@ Deno.serve(async (req) => {
       const { data: u } = await sb.from("profiles").select("balance").eq("id", t.user_id).single();
       await sb.from("profiles").update({ balance: Number(u?.balance || 0) + credit }).eq("id", t.user_id);
       await sb.from("transactions").update({ status: "approved" }).eq("id", t.id);
+      await sb.from("notifications").insert({ user_id: t.user_id, title: "Deposit approved", body: `+${credit} added to your balance.` });
       await log("funds.approve", "txn #" + t.id, { user: t.user_id, amount: t.amount, credited: credit });
       return j({ ok: true, credited: credit });
     }
@@ -277,6 +318,9 @@ Deno.serve(async (req) => {
         await sb.from("profiles").update({ balance: Number(u?.balance || 0) + refunded }).eq("id", o.user_id);
         await sb.from("transactions").insert({ user_id: o.user_id, type: "credit", amount: refunded, method: "refund", txn_ref: `ORD-${o.id}`, status: "approved", note: `Refund for order #${o.id} (admin)` });
       }
+      await sb.from("order_events").insert({ order_id: o.id, event: `status -> ${st}`, detail: refunded ? `Refunded ${refunded}` : "" });
+      if (st === "completed") await sb.from("notifications").insert({ user_id: o.user_id, title: `Order #${o.id} completed`, body: "Your order finished. You can rate the service." });
+      if (refunded > 0) await sb.from("notifications").insert({ user_id: o.user_id, title: `Order #${o.id} ${st}`, body: `Refunded ${refunded}.` });
       await log("order.set", "#" + o.id, { from: o.status, to: st, refunded });
       return j({ ok: true, refunded });
     }
@@ -302,9 +346,166 @@ Deno.serve(async (req) => {
       if (b.discount_pct !== undefined) patch.discount_pct = Math.min(100, Math.max(0, Number(b.discount_pct) || 0));
       if (b.order_limit !== undefined) patch.order_limit = Math.max(0, parseInt(b.order_limit) || 0);
       if (b.note !== undefined) patch.note = String(b.note).slice(0, 500);
+      if (b.tags !== undefined) patch.tags = String(b.tags).slice(0, 200);
       if (!Object.keys(patch).length) return j({ error: "Nothing to update." }, 400);
       await sb.from("profiles").update(patch).eq("id", uid);
       await log("user.update", u.email, patch);
+      return j({ ok: true });
+    }
+
+    /* ======= referral.claim ======= */
+    if (op === "referral.claim") {
+      const code = String(b.code || "").trim().toUpperCase();
+      if (!code) return j({ error: "Enter a referral code." }, 400);
+      if (me.referred_by) return j({ error: "You already used a referral code." }, 400);
+      const { data: ref } = await sb.from("profiles").select("id,balance").eq("referral_code", code).single();
+      if (!ref) return j({ error: "Invalid referral code." }, 400);
+      if (ref.id === meId) return j({ error: "You cannot refer yourself." }, 400);
+      const reward = Math.max(0, Number(cfg?.referral_reward || 0));
+      await sb.from("profiles").update({ referred_by: ref.id }).eq("id", meId);
+      await sb.from("referrals").insert({ referrer_id: ref.id, referred_id: meId, reward, status: "paid" });
+      if (reward > 0) {
+        await sb.from("profiles").update({ balance: Number(ref.balance || 0) + reward }).eq("id", ref.id);
+        await sb.from("transactions").insert({ user_id: ref.id, type: "credit", amount: reward, method: "referral", status: "approved", note: `Referral reward (${me.email || "new user"})` });
+        await sb.from("notifications").insert({ user_id: ref.id, title: "Referral reward earned", body: `+${reward} for inviting ${me.email || "a friend"}.` });
+      }
+      await log("referral.claim", me.email || meId, { by: ref.id, reward });
+      return j({ ok: true, reward });
+    }
+
+    /* ======= loyalty.convert ======= */
+    if (op === "loyalty.convert") {
+      const pts = Math.floor(Number(b.points) || 0);
+      const rate = Number(cfg?.loyalty_redeem_rate || 0);
+      if (!pts || pts <= 0) return j({ error: "Enter points to convert." }, 400);
+      if (!(rate > 0)) return j({ error: "Loyalty redemption is disabled." }, 400);
+      if (pts > Number(me.loyalty_points || 0)) return j({ error: "Not enough loyalty points." }, 400);
+      const credit = +(pts * rate).toFixed(4);
+      await sb.from("profiles").update({ loyalty_points: Number(me.loyalty_points || 0) - pts, balance: Number(me.balance || 0) + credit }).eq("id", meId);
+      await sb.from("transactions").insert({ user_id: meId, type: "credit", amount: credit, method: "loyalty", status: "approved", note: `Converted ${pts} loyalty points` });
+      return j({ ok: true, credited: credit });
+    }
+
+    /* ======= transfer.send ======= */
+    if (op === "transfer.send") {
+      const toEmail = String(b.to_email || "").trim().toLowerCase();
+      const amt = +Number(b.amount || 0).toFixed(4);
+      const minT = Number(cfg?.transfer_min || 0);
+      const feePct = Math.min(50, Math.max(0, Number(cfg?.transfer_fee_pct || 0)));
+      if (!toEmail || !amt || amt <= 0) return j({ error: "Recipient email and amount are required." }, 400);
+      if (amt < minT) return j({ error: `Minimum transfer is ${minT}.` }, 400);
+      const { data: to } = await sb.from("profiles").select("id,status,balance").ilike("email", toEmail).single();
+      if (!to) return j({ error: "Recipient not found." }, 404);
+      if (to.id === meId) return j({ error: "You cannot transfer to yourself." }, 400);
+      if (to.status !== "active") return j({ error: "Recipient account is not active." }, 400);
+      const fee = +(amt * feePct / 100).toFixed(4);
+      if (Number(me.balance) < amt + fee) return j({ error: "Insufficient balance (amount + fee)." }, 400);
+      await sb.from("profiles").update({ balance: Number(me.balance) - amt - fee }).eq("id", meId);
+      await sb.from("profiles").update({ balance: Number(to.balance || 0) + amt }).eq("id", to.id);
+      await sb.from("transactions").insert({ user_id: meId, type: "debit", amount: amt + fee, method: "transfer", status: "approved", note: `Sent to ${toEmail}${fee ? ` (fee ${fee})` : ""}` });
+      await sb.from("transactions").insert({ user_id: to.id, type: "credit", amount: amt, method: "transfer", status: "approved", note: `Received from ${me.email || "user"}` });
+      await sb.from("notifications").insert({ user_id: to.id, title: "Balance received", body: `+${amt} from ${me.email || "user"}.` });
+      return j({ ok: true, sent: amt, fee });
+    }
+
+    /* ======= service.toggle (admin + back-online alerts) ======= */
+    if (op === "service.toggle") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const sid = Number(b.service_id);
+      const active = !(b.active === false || b.active === "false");
+      const { data: svc } = await sb.from("services").select("id,name,active").eq("id", sid).single();
+      if (!svc) return j({ error: "Service not found." }, 404);
+      await sb.from("services").update({ active }).eq("id", sid);
+      let notified = 0;
+      if (active && !svc.active) {
+        const { data: subs } = await sb.from("service_alerts").select("id,user_id").eq("service_id", sid).eq("kind", "back_online").eq("active", true);
+        for (const s of subs || []) {
+          await sb.from("notifications").insert({ user_id: s.user_id, title: "Service is back online", body: `${svc.name} is available again.` });
+          await sb.from("service_alerts").update({ triggered_at: new Date().toISOString() }).eq("id", s.id);
+          notified++;
+        }
+      }
+      await log("service.toggle", `#${sid} -> ${active ? "live" : "hidden"}`, { notified });
+      return j({ ok: true, active, notified });
+    }
+
+    /* ======= broadcast.send (admin) ======= */
+    if (op === "broadcast.send") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const title = String(b.title || "").trim().slice(0, 120);
+      const body = String(b.body || "").trim().slice(0, 1000);
+      const segment = String(b.segment || "all");
+      if (!title || !body) return j({ error: "Title and message are required." }, 400);
+      let qq = sb.from("profiles").select("id").eq("status", "active");
+      if (segment === "new") qq = qq.gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString());
+      if (segment === "vip") qq = qq.ilike("tags", "%vip%");
+      const { data: users } = await qq.limit(2000);
+      const batch = `bc-${Date.now()}`;
+      let sent = 0;
+      for (const u of users || []) {
+        await sb.from("notifications").insert({ user_id: u.id, title, body, is_broadcast: true, batch });
+        sent++;
+      }
+      await log("broadcast.send", batch, { segment, sent });
+      return j({ ok: true, sent });
+    }
+
+    /* ======= account.delete_self / account.set_email ======= */
+    if (op === "account.delete_self") {
+      if (String(b.confirm || "") !== "DELETE") return j({ error: "Type DELETE to confirm." }, 400);
+      await log("account.delete", me.email || meId, {});
+      const { error } = await sb.auth.admin.deleteUser(meId);
+      if (error) return j({ error: "Could not delete account." }, 500);
+      return j({ ok: true });
+    }
+    if (op === "account.set_email") {
+      const email = String(b.email || "").trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return j({ error: "Enter a valid email." }, 400);
+      const { data: taken } = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
+      if (taken && taken.id !== meId) return j({ error: "Email is already in use." }, 400);
+      const { error } = await sb.auth.admin.updateUserById(meId, { email });
+      if (error) return j({ error: "Could not change email." }, 500);
+      await sb.from("profiles").update({ email }).eq("id", meId);
+      return j({ ok: true, email });
+    }
+
+    /* ======= review.create (completed orders only) ======= */
+    if (op === "review.create") {
+      const oid = Number(b.order_id);
+      const rating = Math.min(5, Math.max(1, Number(b.rating) || 0));
+      const text = String(b.text || "").trim().slice(0, 500);
+      if (!oid || !rating) return j({ error: "Order and rating are required." }, 400);
+      const { data: o } = await sb.from("orders").select("id,user_id,service_id,status").eq("id", oid).single();
+      if (!o || o.user_id !== meId) return j({ error: "Order not found." }, 404);
+      if (o.status !== "completed") return j({ error: "Only completed orders can be reviewed." }, 400);
+      const { data: dup } = await sb.from("reviews").select("id").eq("order_id", oid).maybeSingle();
+      if (dup) return j({ error: "You already reviewed this order." }, 400);
+      await sb.from("reviews").insert({ service_id: o.service_id, user_id: meId, order_id: oid, rating, text, approved: false });
+      return j({ ok: true });
+    }
+
+    /* ======= ticket.rate ======= */
+    if (op === "ticket.rate") {
+      const tid = Number(b.ticket_id);
+      const rating = Math.min(5, Math.max(1, Number(b.rating) || 0));
+      if (!tid || !rating) return j({ error: "Ticket and rating are required." }, 400);
+      const { data: t } = await sb.from("tickets").select("id,user_id,status,satisfaction").eq("id", tid).single();
+      if (!t || t.user_id !== meId) return j({ error: "Ticket not found." }, 404);
+      if (t.status !== "closed") return j({ error: "You can rate after the ticket is closed." }, 400);
+      if (t.satisfaction) return j({ error: "Already rated." }, 400);
+      await sb.from("tickets").update({ satisfaction: rating }).eq("id", tid);
+      return j({ ok: true });
+    }
+
+    /* ======= funds.flag (admin) ======= */
+    if (op === "funds.flag") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const tid = Number(b.txn_id);
+      const flagged = !!b.flagged;
+      const { data: t } = await sb.from("transactions").select("id").eq("id", tid).single();
+      if (!t) return j({ error: "Transaction not found." }, 404);
+      await sb.from("transactions").update({ flagged, flag_note: String(b.note || "").slice(0, 300) }).eq("id", tid);
+      await log(flagged ? "funds.flag" : "funds.unflag", "txn #" + tid, {});
       return j({ ok: true });
     }
 

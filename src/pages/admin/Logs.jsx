@@ -42,7 +42,7 @@ export default function AdminLogs() {
               <div className="flex flex-wrap items-center gap-2">
                 <Receipt size={15} className="text-violet-300" />
                 <span className="rounded bg-violet-500/15 px-2 py-0.5 font-mono text-[11px] font-bold text-violet-200">{l.action}</span>
-                {l.target && <span className="text-xs font-bold text-white/80">{l.target}</span>}
+                {l.target && <span className="text-xs font-bold text-white/100">{l.target}</span>}
               </div>
               <p className="mt-1 text-[11px] text-white/40">
                 {l.actor_email || 'system'} · {new Date(l.created_at).toLocaleString()}

@@ -45,14 +45,17 @@ Deno.serve(async (req) => {
 
   const key = String(p.key || "").trim();
   const action = String(p.action || "").trim();
-  if (!key) return j({ error: "API key invalid" });
+  const logBad = () => sb.from("api_logs").insert({ user_id: null, action: action || "?", ok: false });
+  if (!key) { await logBad(); return j({ error: "API key invalid" }); }
   const { data: me } = await sb.from("profiles").select("*").eq("api_key", key).single();
-  if (!me) return j({ error: "API key invalid" });
-  if (me.status !== "active") return j({ error: "Account is suspended" });
+  if (!me) { await logBad(); return j({ error: "API key invalid" }); }
+  if (me.status !== "active") { await sb.from("api_logs").insert({ user_id: me.id, action: action || "?", ok: false }); return j({ error: "Account is suspended" }); }
+  const logApi = () => sb.from("api_logs").insert({ user_id: me.id, action });
   const { data: cfg } = await sb.from("settings").select("*").eq("id", 1).single();
 
   /* ── services ── */
   if (action === "services") {
+    await logApi();
     const { data } = await sb.from("services").select("id,name,rate,min_qty,max_qty,type").eq("active", true).order("id");
     return j((data || []).map((s: any) => ({
       service: s.id, name: s.name, rate: String(s.rate), min: String(s.min_qty), max: String(s.max_qty), type: s.type || "Default",
@@ -61,11 +64,13 @@ Deno.serve(async (req) => {
 
   /* ── balance ── */
   if (action === "balance") {
+    await logApi();
     return j({ balance: String(me.balance), currency: cfg?.currency || "INR" });
   }
 
   /* ── add ── */
   if (action === "add") {
+    await logApi();
     if (cfg?.maintenance) return j({ error: "Panel is under maintenance" });
     const svcId = Number(p.service), qty = Number(p.quantity);
     const link = String(p.link || "").trim();
@@ -100,6 +105,7 @@ Deno.serve(async (req) => {
 
   /* ── status (single or batch of 100) ── */
   if (action === "status") {
+    await logApi();
     const shape = (o: any) => ({
       charge: String(o.charge), start_count: String(o.start_count || 0),
       status: STATUS_MAP[o.status] || o.status, remains: String(o.remains ?? o.quantity), currency: cfg?.currency || "INR",
@@ -118,6 +124,7 @@ Deno.serve(async (req) => {
 
   /* ── refill ── */
   if (action === "refill") {
+    await logApi();
     const ids = p.orders
       ? String(p.orders).split(",").map((x) => Number(x.trim())).filter(Boolean).slice(0, 100)
       : [Number(p.order)].filter(Boolean);
@@ -141,6 +148,7 @@ Deno.serve(async (req) => {
 
   /* ── cancel ── */
   if (action === "cancel") {
+    await logApi();
     const ids = p.orders
       ? String(p.orders).split(",").map((x) => Number(x.trim())).filter(Boolean).slice(0, 100)
       : [Number(p.order)].filter(Boolean);

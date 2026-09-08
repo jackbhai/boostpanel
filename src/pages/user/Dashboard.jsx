@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton } from '../../components/ui'
-import { ArrowRight, Box, ClipboardList, Layers, LifeBuoy, Megaphone, Plug, Plus, ShoppingCart, Ticket, Wallet } from '../../components/icons'
-import { getAnnouncements, getUserOrders, getUserStats } from '../../lib/db'
+import { ArrowRight, Bell, Box, ClipboardList, Layers, LifeBuoy, Megaphone, Plug, Plus, ShoppingCart, Star, Ticket, Wallet } from '../../components/icons'
+import { getAnnouncements, getUserOrders, getUserStats, listNotifications } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
 
@@ -13,6 +13,9 @@ const QUICK = [
   { to: '/funds', icon: Wallet, label: 'Add Funds' },
   { to: '/tickets', icon: Ticket, label: 'Tickets' },
   { to: '/api', icon: Plug, label: 'API' },
+  { to: '/rewards', icon: Star, label: 'Rewards' },
+  { to: '/notifications', icon: Bell, label: 'Alerts' },
+  { to: '/help', icon: LifeBuoy, label: 'Help' },
 ]
 
 export default function Dashboard() {
@@ -21,15 +24,22 @@ export default function Dashboard() {
   const [recent, setRecent] = useState([])
   const [news, setNews] = useState([])
   const [loading, setLoading] = useState(true)
+  const [unread, setUnread] = useState(0)
   const navigate = useNavigate()
 
   useEffect(() => {
     refreshProfile()
+    listNotifications(user.id, 50).then((n) => setUnread((n || []).filter((x) => !x.read).length)).catch(() => {})
     Promise.all([getUserStats(user.id), getUserOrders(user.id), getAnnouncements(true)])
       .then(([s, orders, anns]) => {
         setStats(s)
         setRecent(orders.slice(0, 4))
-        setNews(anns.slice(0, 3))
+        const now = Date.now()
+        setNews(anns.filter((a) => {
+          const st = a.starts_at ? new Date(a.starts_at).getTime() : 0
+          const en = a.ends_at ? new Date(a.ends_at).getTime() : Infinity
+          return now >= st && now <= en
+        }).slice(0, 3))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -64,6 +74,17 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {unread > 0 && (
+        <Link to="/notifications" className="card mt-3 flex items-center gap-2.5 border-violet-500/30 bg-violet-500/10 p-3.5">
+          <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-violet-200">
+            <Bell size={19} />
+            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{unread}</span>
+          </span>
+          <span className="flex-1 text-[13px] font-semibold text-white">You have {unread} unread notification{unread > 1 ? 's' : ''}</span>
+          <ArrowRight size={16} className="text-violet-300" />
+        </Link>
+      )}
+
       {/* Stats */}
       {loading ? (
         <div className="mt-4"><Skeleton lines={1} /></div>
@@ -90,7 +111,7 @@ export default function Dashboard() {
         {QUICK.map((q) => (
           <Link key={q.to} to={q.to} className="card card-hover flex flex-col items-center gap-1.5 px-2 py-3.5">
             <q.icon size={26} className="text-violet-300" />
-            <span className="text-[12px] font-semibold text-white/80">{q.label}</span>
+            <span className="text-[12px] font-semibold text-white/100">{q.label}</span>
           </Link>
         ))}
       </div>

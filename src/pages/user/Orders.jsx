@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
-import { Box, ExternalLink, RefreshCcw, XCircle } from '../../components/icons'
-import { cancelOrder, getUserOrders, refillOrder } from '../../lib/db'
+import { Box, ExternalLink, RefreshCcw, XCircle, Clock, Star } from '../../components/icons'
+import { cancelOrder, getUserOrders, refillOrder, createReview, orderEvents } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
 import { money, progressOf, shortId, timeAgo } from '../../lib/utils'
 
@@ -15,6 +15,11 @@ export default function Orders() {
   const [filter, setFilter] = useState('all')
   const [q, setQ] = useState('')
   const [acting, setActing] = useState(null)
+  const [expanded, setExpanded] = useState(null)
+  const [events, setEvents] = useState([])
+  const [reviewFor, setReviewFor] = useState(null)
+  const [stars, setStars] = useState(5)
+  const [reviewText, setReviewText] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -25,6 +30,22 @@ export default function Orders() {
   }
 
   useEffect(load, [])
+
+  const toggleTimeline = async (id) => {
+    if (expanded === id) { setExpanded(null); return }
+    setExpanded(id)
+    try { setEvents(await orderEvents(id)) } catch { setEvents([]) }
+  }
+
+  const sendReview = async (id) => {
+    setActing(`r${id}`)
+    try {
+      await createReview(id, stars, reviewText.trim())
+      toast('Thanks! Review sent for approval.')
+      setReviewFor(null)
+    } catch (err) { toast(err.message, 'error') }
+    setActing(null)
+  }
 
   const list = useMemo(() => {
     return orders.filter((o) => {
@@ -122,6 +143,36 @@ export default function Orders() {
                 </div>
               </div>
 
+              {o.coupon_code && <p className="mt-1.5 text-[11px] font-bold text-emerald-300">Coupon {o.coupon_code} saved {money(o.discount_amt || 0, currency())}</p>}
+              <div className="mt-2 flex gap-3">
+                <button onClick={() => toggleTimeline(o.id)} className="flex items-center gap-1 text-[12px] font-bold text-violet-300"><Clock size={12} />{expanded === o.id ? 'Hide history' : 'History'}</button>
+                {o.status === 'completed' && <button onClick={() => { setReviewFor(o.id); setStars(5); setReviewText('') }} className="flex items-center gap-1 text-[12px] font-bold text-amber-300"><Star size={12} />Rate service</button>}
+              </div>
+              {expanded === o.id && (
+                <div className="mt-2 rounded-xl border border-white/10 bg-black/30 p-3">
+                  {events.length === 0 ? <p className="text-[12px] text-white/40">No events yet.</p> : events.map((ev) => (
+                    <div key={ev.id} className="flex gap-2 border-l-2 border-violet-500/40 py-1 pl-2.5 text-[12px]">
+                      <span className="shrink-0 font-bold text-white/75">{ev.event}</span>
+                      <span className="flex-1 truncate text-white/45">{ev.detail || ''}</span>
+                      <span className="shrink-0 text-white/30">{timeAgo(ev.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {reviewFor === o.id && (
+                <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <button key={i} onClick={() => setStars(i)} aria-label={`${i} stars`}><Star size={24} className={i <= stars ? 'text-amber-300' : 'text-white/20'} fill={i <= stars ? 'currentColor' : 'none'} /></button>
+                    ))}
+                  </div>
+                  <input value={reviewText} onChange={(e) => setReviewText(e.target.value)} placeholder="Say something nice (optional)…" maxLength={500} className="mt-2 w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-[13px] text-white outline-none placeholder:text-white/30" />
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={() => sendReview(o.id)} disabled={acting === `r${o.id}`} className="grad-btn rounded-lg px-3.5 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-50">Submit review</button>
+                    <button onClick={() => setReviewFor(null)} className="rounded-lg bg-white/10 px-3 py-1.5 text-[12.5px] font-bold text-white/60">Cancel</button>
+                  </div>
+                </div>
+              )}
               <div className="mt-2.5 flex items-center justify-between">
                 <span className="text-[11px] text-white/35">{timeAgo(o.created_at)}</span>
                 <div className="flex gap-2">
