@@ -228,7 +228,7 @@ export async function placeOrder(userId, service, link, quantity, opts = {}) {
     runs: opts.runs || 0, interval_mins: opts.interval_mins || 0,
     coupon_code: opts.coupon_code || '',
   })
-  return { order: res.order, forwarded: res.forwarded, charge: res.charge, provider_error: res.provider_error }
+  return { order: res.order, forwarded: res.forwarded, charge: res.charge, provider_error: res.provider_error, discount: res.discount, loyalty_earned: res.loyalty_earned, coupon: res.coupon }
 }
 
 export async function getUserOrders(userId) {
@@ -468,74 +468,83 @@ export async function toggleFavorite(userId, serviceId, on) {
 }
 
 /* ════════════════ v4 · coupons / referrals / loyalty / notifications / reviews ════════════════ */
-export const listCoupons = () => row('coupons', q => q.select('*').order('created_at', { ascending: false }))
-export const saveCoupon = (c) => c.id
-  ? row('coupons', q => q.update({ code: c.code, kind: c.kind, value: +c.value || 0, active: !!c.active, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).eq('id', c.id).select().single())
-  : row('coupons', q => q.insert({ code: (c.code || '').toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).select().single())
-export const deleteCoupon = (id) => row('coupons', q => q.delete().eq('id', id))
-export const toggleCoupon = (id, active) => row('coupons', q => q.update({ active }).eq('id', id))
+export const listCoupons = () => row(sb().from('coupons').select('*').order('created_at', { ascending: false }))
+export const saveCoupon = (c) => {
+  const payload = { code: (c.code || '').toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }
+  const q = c.id ? sb().from('coupons').update(payload).eq('id', c.id) : sb().from('coupons').insert(payload)
+  return row(q.select().single())
+}
+export const deleteCoupon = (id) => row(sb().from('coupons').delete().eq('id', id))
+export const toggleCoupon = (id, active) => row(sb().from('coupons').update({ active }).eq('id', id))
 export const claimReferral = (code) => secure('referral.claim', { code })
-export const myReferrals = (userId) => row('referrals', q => q.select('*').eq('referrer_id', userId).order('created_at', { ascending: false }))
+export const myReferrals = (userId) => row(sb().from('referrals').select('*').eq('referrer_id', userId).order('created_at', { ascending: false }))
 export const convertLoyalty = (points) => secure('loyalty.convert', { points })
 export const sendTransfer = (to_email, amount) => secure('transfer.send', { to_email, amount })
-export const listNotifications = (userId, limit = 100) => row('notifications', q => q.select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
-export const markNotifRead = (ids) => row('notifications', q => q.update({ read: true }).in('id', Array.isArray(ids) ? ids : [ids]))
-export const markAllNotifsRead = (userId) => row('notifications', q => q.update({ read: true }).eq('user_id', userId).eq('read', false))
-export const deleteNotif = (id) => row('notifications', q => q.delete().eq('id', id))
-export const clearReadNotifs = (userId) => row('notifications', q => q.delete().eq('user_id', userId).eq('read', true))
+export const listNotifications = (userId, limit = 100) => row(sb().from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
+export const markNotifRead = (ids) => row(sb().from('notifications').update({ read: true }).in('id', Array.isArray(ids) ? ids : [ids]))
+export const markAllNotifsRead = (userId) => row(sb().from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false))
+export const deleteNotif = (id) => row(sb().from('notifications').delete().eq('id', id))
+export const clearReadNotifs = (userId) => row(sb().from('notifications').delete().eq('user_id', userId).eq('read', true))
 export const broadcastSend = (title, body, segment) => secure('broadcast.send', { title, body, segment })
-export const broadcastHistory = () => row('notifications', q => q.select('batch, title, body, created_at').eq('is_broadcast', true).order('created_at', { ascending: false }).limit(200))
+export const broadcastHistory = () => row(sb().from('notifications').select('batch, title, body, created_at').eq('is_broadcast', true).order('created_at', { ascending: false }).limit(200))
 export const createReview = (order_id, rating, text) => secure('review.create', { order_id, rating, text })
-export const myReviews = (userId) => row('reviews', q => q.select('*, services(name)').eq('user_id', userId).order('created_at', { ascending: false }))
-export const listApprovedReviews = (serviceId) => row('reviews', q => q.select('rating, text, created_at, profiles!inner(email)').eq('service_id', serviceId).eq('approved', true).order('created_at', { ascending: false }).limit(50))
-export const reviewAggregate = () => row('reviews', q => q.select('service_id, rating').eq('approved', true).limit(5000))
-export const listReviewsAdmin = () => row('reviews', q => q.select('*, services(name)').order('created_at', { ascending: false }).limit(300))
-export const approveReview = (id, approved) => row('reviews', q => q.update({ approved }).eq('id', id))
-export const deleteReviewAdmin = (id) => row('reviews', q => q.delete().eq('id', id))
-export const replyReview = (id, text) => row('reviews', q => q.update({ admin_reply: text }).eq('id', id))
+export const myReviews = (userId) => row(sb().from('reviews').select('*').eq('user_id', userId).order('created_at', { ascending: false }))
+export const listApprovedReviews = (serviceId) => row(sb().from('reviews').select('rating, text, created_at').eq('service_id', serviceId).eq('approved', true).order('created_at', { ascending: false }).limit(50))
+export const reviewAggregate = () => row(sb().from('reviews').select('service_id, rating').eq('approved', true).limit(5000))
+export const listReviewsAdmin = () => row(sb().from('reviews').select('*, services(name)').order('created_at', { ascending: false }).limit(300))
+export const approveReview = (id, approved) => row(sb().from('reviews').update({ approved }).eq('id', id))
+export const deleteReviewAdmin = (id) => row(sb().from('reviews').delete().eq('id', id))
+export const replyReview = (id, text) => row(sb().from('reviews').update({ admin_reply: text }).eq('id', id))
 export const rateTicket = (ticket_id, rating) => secure('ticket.rate', { ticket_id, rating })
 export const flagTxn = (txn_id, flagged, note) => secure('funds.flag', { txn_id, flagged, note })
-export const orderEvents = (orderId) => row('order_events', q => q.select('*').eq('order_id', orderId).order('created_at', { ascending: true }))
-export const orderNoteAdmin = (orderId, text) => row('order_events', q => q.insert({ order_id: orderId, event: 'note', detail: text }).select().single())
+export const orderEvents = (orderId) => row(sb().from('order_events').select('*').eq('order_id', orderId).order('created_at', { ascending: true }))
+export const orderNoteAdmin = (orderId, text) => row(sb().from('order_events').insert({ order_id: orderId, event: 'note', detail: text }).select().single())
 export const toggleServiceAdmin = (service_id, active) => secure('service.toggle', { service_id, active })
 export const deleteAccountSelf = () => secure('account.delete_self', { confirm: 'DELETE' })
 export const setEmailSelf = (email) => secure('account.set_email', { email })
 
 /* ════════════════ v4 · content (faqs / macros / library / events) ════════════════ */
-export const listFaqs = () => row('faqs', q => q.select('*').order('sort', { ascending: true }))
-export const listFaqsPublic = () => row('faqs', q => q.select('*').eq('published', true).order('sort', { ascending: true }))
-export const saveFaq = (f) => f.id
-  ? row('faqs', q => q.update({ question: f.question, answer: f.answer, category: f.category || 'General', published: !!f.published, sort: +f.sort || 0 }).eq('id', f.id).select().single())
-  : row('faqs', q => q.insert({ question: f.question, answer: f.answer, category: f.category || 'General', published: f.published !== false, sort: +f.sort || 0 }).select().single())
-export const deleteFaq = (id) => row('faqs', q => q.delete().eq('id', id))
-export const listMacros = () => row('macros', q => q.select('*').order('title'))
-export const saveMacro = (m) => m.id
-  ? row('macros', q => q.update({ title: m.title, body: m.body }).eq('id', m.id).select().single())
-  : row('macros', q => q.insert({ title: m.title, body: m.body }).select().single())
-export const deleteMacro = (id) => row('macros', q => q.delete().eq('id', id))
-export const listLibraryAdmin = () => row('library', q => q.select('*').order('sort'))
-export const listLibraryPublic = () => row('library', q => q.select('*').eq('published', true).order('sort'))
-export const saveLibrary = (l) => l.id
-  ? row('library', q => q.update({ title: l.title, body: l.body, category: l.category || 'Guide', published: !!l.published, sort: +l.sort || 0 }).eq('id', l.id).select().single())
-  : row('library', q => q.insert({ title: l.title, body: l.body, category: l.category || 'Guide', published: l.published !== false, sort: +l.sort || 0 }).select().single())
-export const deleteLibrary = (id) => row('library', q => q.delete().eq('id', id))
-export const listEventsAdmin = () => row('events', q => q.select('*').order('starts_at'))
-export const listEventsPublic = () => row('events', q => q.select('*').eq('published', true).order('starts_at'))
-export const saveEvent = (e) => e.id
-  ? row('events', q => q.update({ title: e.title, body: e.body || '', starts_at: e.starts_at || null, ends_at: e.ends_at || null, published: !!e.published }).eq('id', e.id).select().single())
-  : row('events', q => q.insert({ title: e.title, body: e.body || '', starts_at: e.starts_at || null, ends_at: e.ends_at || null, published: e.published !== false }).select().single())
-export const deleteEvent = (id) => row('events', q => q.delete().eq('id', id))
+export const listFaqs = () => row(sb().from('faqs').select('*').order('sort', { ascending: true }))
+export const listFaqsPublic = () => row(sb().from('faqs').select('*').eq('published', true).order('sort', { ascending: true }))
+export const saveFaq = (f) => {
+  const payload = { question: f.question, answer: f.answer, q: f.question, a: f.answer, category: f.category || 'General', published: !!f.published, sort: +f.sort || 0 }
+  const q = f.id ? sb().from('faqs').update(payload).eq('id', f.id) : sb().from('faqs').insert(payload)
+  return row(q.select().single())
+}
+export const deleteFaq = (id) => row(sb().from('faqs').delete().eq('id', id))
+export const listMacros = () => row(sb().from('macros').select('*').order('title'))
+export const saveMacro = (m) => {
+  const q = m.id ? sb().from('macros').update({ title: m.title, body: m.body }).eq('id', m.id) : sb().from('macros').insert({ title: m.title, body: m.body })
+  return row(q.select().single())
+}
+export const deleteMacro = (id) => row(sb().from('macros').delete().eq('id', id))
+export const listLibraryAdmin = () => row(sb().from('library').select('*').order('sort'))
+export const listLibraryPublic = () => row(sb().from('library').select('*').eq('published', true).order('sort'))
+export const saveLibrary = (l) => {
+  const payload = { title: l.title, body: l.body, category: l.category || 'Guide', published: !!l.published, sort: +l.sort || 0 }
+  const q = l.id ? sb().from('library').update(payload).eq('id', l.id) : sb().from('library').insert(payload)
+  return row(q.select().single())
+}
+export const deleteLibrary = (id) => row(sb().from('library').delete().eq('id', id))
+export const listEventsAdmin = () => row(sb().from('events').select('*').order('starts_at'))
+export const listEventsPublic = () => row(sb().from('events').select('*').eq('published', true).order('starts_at'))
+export const saveEvent = (e) => {
+  const payload = { title: e.title, body: e.body || '', starts_at: e.starts_at || null, ends_at: e.ends_at || null, published: !!e.published }
+  const q = e.id ? sb().from('events').update(payload).eq('id', e.id) : sb().from('events').insert(payload)
+  return row(q.select().single())
+}
+export const deleteEvent = (id) => row(sb().from('events').delete().eq('id', id))
 
 /* ════════════════ v4 · alerts / sessions / api insight / risk ════════════════ */
-export const myAlerts = (userId) => row('service_alerts', q => q.select('*, services(name, rate)').eq('user_id', userId).order('created_at', { ascending: false }))
-export const addAlert = (user_id, service_id, kind, threshold) => row('service_alerts', q => q.insert({ user_id, service_id, kind, threshold: +threshold || 0 }).select().single())
-export const deleteAlert = (id) => row('service_alerts', q => q.delete().eq('id', id))
-export const mySessions = (userId) => row('sessions', q => q.select('*').eq('user_id', userId).order('last_seen', { ascending: false }).limit(20))
-export const touchSession = (user_id, device) => row('sessions', q => q.upsert({ user_id, device: (device || 'Web').slice(0, 120), last_seen: new Date().toISOString(), ip: '' }, { onConflict: 'user_id,device' }).select().single())
-export const killSession = (id) => row('sessions', q => q.delete().eq('id', id))
-export const apiLogsAdmin = (limit = 300) => row('api_logs', q => q.select('*').order('created_at', { ascending: false }).limit(limit))
-export const myApiLogs = (userId, limit = 100) => row('api_logs', q => q.select('action, ok, ms, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
-export const balanceLogs = (providerId) => row('provider_balance_logs', q => q.select('*').eq('provider_id', providerId).order('created_at', { ascending: false }).limit(60))
-export const flaggedTxns = () => row('transactions', q => q.select('*').eq('flagged', true).order('created_at', { ascending: false }).limit(200))
-export const searchOrdersAdmin = (term) => row('orders', q => q.select('*').or(`link.ilike.%${term}%`).order('created_at', { ascending: false }).limit(50))
-export const searchUsersAdmin = (term) => row('profiles', q => q.select('id, email, balance, role, status, created_at').or(`email.ilike.%${term}%,id.eq.${term}`).limit(20))
+export const myAlerts = (userId) => row(sb().from('service_alerts').select('*, services(name, rate)').eq('user_id', userId).order('created_at', { ascending: false }))
+export const addAlert = (user_id, service_id, kind, threshold) => row(sb().from('service_alerts').insert({ user_id, service_id, kind, threshold: +threshold || 0 }).select().single())
+export const deleteAlert = (id) => row(sb().from('service_alerts').delete().eq('id', id))
+export const mySessions = (userId) => row(sb().from('sessions').select('*').eq('user_id', userId).order('last_seen', { ascending: false }).limit(20))
+export const touchSession = (user_id, device) => row(sb().from('sessions').upsert({ user_id, device: (device || 'Web').slice(0, 120), last_seen: new Date().toISOString(), ip: '' }, { onConflict: 'user_id,device' }).select().single())
+export const killSession = (id) => row(sb().from('sessions').delete().eq('id', id))
+export const apiLogsAdmin = (limit = 300) => row(sb().from('api_logs').select('*').order('created_at', { ascending: false }).limit(limit))
+export const myApiLogs = (userId, limit = 100) => row(sb().from('api_logs').select('action, ok, ms, created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(limit))
+export const balanceLogs = (providerId) => row(sb().from('provider_balance_logs').select('*').eq('provider_id', providerId).order('created_at', { ascending: false }).limit(60))
+export const flaggedTxns = () => row(sb().from('transactions').select('*').eq('flagged', true).order('created_at', { ascending: false }).limit(200))
+export const searchOrdersAdmin = (term) => row(sb().from('orders').select('*').or(`link.ilike.%${term}%`).order('created_at', { ascending: false }).limit(50))
+export const searchUsersAdmin = (term) => row(sb().from('profiles').select('id, email, balance, role, status, created_at').or(`email.ilike.%${term}%,id.eq.${term}`).limit(20))
