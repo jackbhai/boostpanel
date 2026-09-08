@@ -5,7 +5,7 @@ import { deleteCoupon, listCoupons, saveCoupon, toggleCoupon } from '../../lib/d
 import { downloadCSV } from '../../lib/csv'
 import { timeAgo } from '../../lib/utils'
 
-const BLANK = { code: '', kind: 'pct', value: '', max_uses: '', min_charge: '', expires_at: '', active: true }
+const BLANK = { code: '', kind: 'pct', value: '', max_uses: '', min_charge: '', expires_at: '', active: true, public: true }
 
 export default function AdminCoupons() {
   const [list, setList] = useState([])
@@ -32,7 +32,7 @@ export default function AdminCoupons() {
     setForm({
       code: c.code, kind: c.kind, value: c.value, max_uses: c.max_uses || '',
       min_charge: c.min_charge || '',
-      expires_at: c.expires_at ? c.expires_at.slice(0, 16) : '', active: c.active !== false,
+      expires_at: c.expires_at ? c.expires_at.slice(0, 16) : '', active: c.active !== false, public: c.public !== false,
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -92,6 +92,11 @@ export default function AdminCoupons() {
               <option value="on">Active</option><option value="off">Disabled</option>
             </Select>
           </Field>
+          <Field label="Show in Rewards offers" hint="Off = secret code (broadcast it yourself)">
+            <Select value={form.public ? 'on' : 'off'} onChange={(e) => setForm({ ...form, public: e.target.value === 'on' })}>
+              <option value="on">Public</option><option value="off">Secret</option>
+            </Select>
+          </Field>
         </div>
         <div className="mt-3 flex gap-2">
           <Btn type="submit" loading={busy} className="flex-1">{editing ? 'Save changes' : 'Create coupon'}</Btn>
@@ -118,6 +123,7 @@ export default function AdminCoupons() {
                       {c.code}
                     </button>
                     <button onClick={() => copy(c.code)} className="text-white/35 hover:text-white"><Copy size={14} /></button>
+                    {c.public !== false && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">public</span>}
                     <span className="ml-auto text-[14px] font-extrabold text-emerald-300">
                       {c.kind === 'pct' ? `${c.value}%` : `−${c.value}`} off
                     </span>

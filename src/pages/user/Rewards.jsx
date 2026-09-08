@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, PageHead, toast } from '../../components/ui'
 import { Check, Copy, Send, Star, Tag, Users, Wallet } from '../../components/icons'
-import { claimReferral, convertLoyalty, myReferrals, sendTransfer } from '../../lib/db'
+import { claimReferral, convertLoyalty, myReferrals, sendTransfer, listCoupons } from '../../lib/db'
 import { money, timeAgo } from '../../lib/utils'
 import { useStore } from '../../lib/store'
 
 export default function Rewards() {
   const { user, profile, settings, currency, refreshProfile } = useStore()
   const [refs, setRefs] = useState([])
+  const [offers, setOffers] = useState([])
   const [code, setCode] = useState('')
   const [pts, setPts] = useState('')
   const [toEmail, setToEmail] = useState('')
@@ -16,6 +17,7 @@ export default function Rewards() {
 
   useEffect(() => {
     if (user) myReferrals(user.id).then(setRefs).catch(() => {})
+    listCoupons().then(setOffers).catch(() => {})
   }, [user])
 
   const feePct = Number(settings?.transfer_fee_pct || 0)
@@ -93,6 +95,22 @@ export default function Rewards() {
           You earn <b className="text-emerald-300">{money(Number(settings?.referral_reward || 0), currency())}</b> for every friend who joins with your code.
         </p>
       </div>
+
+      {offers.filter((c) => c.active !== false && (!c.expires_at || new Date(c.expires_at).getTime() > Date.now()) && !(Number(c.max_uses) > 0 && Number(c.used) >= Number(c.max_uses))).length > 0 && (
+        <div className="card mb-3 p-4">
+          <p className="mb-2 flex items-center gap-1.5 text-[13px] font-bold text-white"><Tag size={15} className="text-emerald-300" /> Active offers — tap a code to copy</p>
+          <div className="space-y-2">
+            {offers.filter((c) => c.active !== false && (!c.expires_at || new Date(c.expires_at).getTime() > Date.now()) && !(Number(c.max_uses) > 0 && Number(c.used) >= Number(c.max_uses))).map((c) => (
+              <button key={c.id} onClick={() => { navigator.clipboard.writeText(c.code); toast('Code copied! Paste it at checkout.') }} className="flex w-full items-center gap-2.5 rounded-xl border border-dashed border-emerald-400/40 bg-emerald-500/10 px-3 py-2.5 text-left">
+                <span className="font-mono text-[15px] font-extrabold tracking-wider text-emerald-200">{c.code}</span>
+                <span className="ml-auto text-right text-[11.5px] font-bold text-white/60">
+                  {c.kind === 'pct' ? `${c.value}% off` : `${money(c.value, currency())} off`}{Number(c.min_charge) > 0 ? ` · min ${money(c.min_charge, currency())}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!profile?.referred_by ? (
         <div className="card mb-3 p-4">

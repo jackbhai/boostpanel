@@ -470,8 +470,8 @@ export async function toggleFavorite(userId, serviceId, on) {
 /* ════════════════ v4 · coupons / referrals / loyalty / notifications / reviews ════════════════ */
 export const listCoupons = () => row('coupons', q => q.select('*').order('created_at', { ascending: false }))
 export const saveCoupon = (c) => c.id
-  ? row('coupons', q => q.update({ code: c.code, kind: c.kind, value: +c.value || 0, active: !!c.active, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).eq('id', c.id).select().single())
-  : row('coupons', q => q.insert({ code: (c.code || '').toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).select().single())
+  ? row('coupons', q => q.update({ code: c.code, kind: c.kind, value: +c.value || 0, active: !!c.active, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).eq('id', c.id).select().single())
+  : row('coupons', q => q.insert({ code: (c.code || '').toUpperCase(), kind: c.kind || 'pct', value: +c.value || 0, active: c.active !== false, public: c.public !== false, max_uses: +c.max_uses || 0, min_charge: +c.min_charge || 0, expires_at: c.expires_at || null }).select().single())
 export const deleteCoupon = (id) => row('coupons', q => q.delete().eq('id', id))
 export const toggleCoupon = (id, active) => row('coupons', q => q.update({ active }).eq('id', id))
 export const claimReferral = (code) => secure('referral.claim', { code })
