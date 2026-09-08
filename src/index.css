@@ -139,6 +139,10 @@ input:focus, textarea:focus, select:focus { outline: none; }
 
 /* --- logo halo pulse --- */
 .halo { position: relative; }
+/* ring hugs just the logo mark, not the wordmark */
+.halo-logo > div > span:first-child { position: relative; }
+.halo-logo > div > span:first-child::after { content: ""; position: absolute; inset: -6px; border-radius: 18px;
+  border: 2px solid var(--accent1); opacity: 0; animation: haloPulse 2.6s ease-out infinite; }
 .halo::after { content: ""; position: absolute; inset: -7px; border-radius: 22px;
   border: 2px solid var(--accent1); opacity: 0; animation: haloPulse 2.6s ease-out infinite; }
 @keyframes haloPulse {
@@ -177,6 +181,6 @@ input:focus, textarea:focus, select:focus { outline: none; }
 @keyframes riseIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-orb, .particle, .halo::after, .shimmer::after,
+  .auth-orb, .particle, .halo::after, .halo-logo > div > span:first-child::after, .shimmer::after,
   .msg-in, .typing-dots span, .animate-pop, .shake, .boot-bar, .rise-in { animation: none !important; }
 }

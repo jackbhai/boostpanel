@@ -70,7 +70,7 @@ function Shell({ title, sub, children, footer, shakeKey }) {
           transition={{ duration: 0.45, ease: 'easeOut' }}
           className="mb-6 flex flex-col items-center text-center"
         >
-          <span className="halo flex">
+          <span className="halo-logo flex">
             <Logo />
           </span>
           <h1 className="mt-4 text-2xl font-extrabold text-white">{title}</h1>

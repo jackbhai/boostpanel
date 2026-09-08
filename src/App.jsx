@@ -42,6 +42,7 @@ const Profile = lazy(() => import('./pages/user/Profile'))
 const Services = lazy(() => import('./pages/user/Services'))
 const UserTickets = lazy(() => import('./pages/user/Tickets').then((m) => ({ default: m.Tickets })))
 const TicketDetail = lazy(() => import('./pages/user/Tickets').then((m) => ({ default: m.TicketDetail })))
+const Transactions = lazy(() => import('./pages/user/Transactions'))
 
 function IdleLock() {
   const { user, logout } = useStore()
