@@ -4,13 +4,13 @@
 -- ══════════════════════════════════════════════════════════════
 
 insert into categories (id, name, icon, sort, active) overriding system value values
-  (1, 'Instagram',  '📸', 1, true),
-  (2, 'YouTube',    '▶️', 2, true),
-  (3, 'TikTok',     '🎵', 3, true),
-  (4, 'Telegram',   '✈️', 4, true),
-  (5, 'Facebook',   '👍', 5, true),
-  (6, 'X (Twitter)','𝕏', 6, true),
-  (7, 'Spotify',    '🎧', 7, true)
+  (1, 'Instagram',  'instagram', 1, true),
+  (2, 'YouTube',    'youtube', 2, true),
+  (3, 'TikTok',     'tiktok', 3, true),
+  (4, 'Telegram',   'telegram', 4, true),
+  (5, 'Facebook',   'facebook', 5, true),
+  (6, 'X (Twitter)','x', 6, true),
+  (7, 'Spotify',    'spotify', 7, true)
 on conflict (id) do update set name = excluded.name, icon = excluded.icon, sort = excluded.sort;
 
 insert into services (id, category_id, name, platform, type, rate, min_qty, max_qty, avg_time, refill_days, quality, active, description) values

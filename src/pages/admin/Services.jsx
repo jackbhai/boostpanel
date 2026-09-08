@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Textarea, toast } from '../../components/ui'
+import { ClipboardList, Pencil, PlatformIcon, Plug, Plus, Power, Trash2 } from '../../components/icons'
 import { deleteCategory, deleteService, listProviders, saveCategory, saveService } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
@@ -53,7 +53,7 @@ export default function AdminServices() {
         provider_id: svcForm.provider_id ? Number(svcForm.provider_id) : null,
         provider_service_id: svcForm.provider_id ? String(svcForm.provider_service_id || '') : '',
       })
-      toast('Service saved! ✅')
+      toast('Service saved!')
       setSvcForm(null)
       refreshCatalog()
     } catch (err) {
@@ -90,7 +90,7 @@ export default function AdminServices() {
     setBusy(true)
     try {
       await saveCategory({ ...catForm, sort: Number(catForm.sort || 99) })
-      toast('Category saved! ✅')
+      toast('Category saved!')
       setCatForm(null)
       refreshCatalog()
     } catch (err) {
@@ -117,7 +117,7 @@ export default function AdminServices() {
         title="Services"
         sub={`${services.length} services · ${categories.length} categories`}
         right={
-          <Btn onClick={() => (tab === 'services' ? openNew() : setCatForm({ name: '', icon: '📁', sort: 99 }))} className="!px-3.5 !py-2 text-[13px]">
+          <Btn onClick={() => (tab === 'services' ? openNew() : setCatForm({ name: '', icon: '', sort: 99 }))} className="!px-3.5 !py-2 text-[13px]">
             <Plus size={15} /> {tab === 'services' ? 'Service' : 'Category'}
           </Btn>
         }
@@ -139,7 +139,7 @@ export default function AdminServices() {
         <>
           <div className="mt-3"><SearchInput value={q} onChange={setQ} placeholder="Search services…" /></div>
           <div className="mt-3 space-y-2">
-            {list.length === 0 && <EmptyState icon="📋" title="No services" />}
+            {list.length === 0 && <EmptyState icon={<ClipboardList size={40} />} title="No services" />}
             {list.map((s) => (
               <div key={s.id} className={`card p-3.5 ${s.active === false ? 'opacity-50' : ''}`}>
                 <div className="flex items-start justify-between gap-2">
@@ -156,10 +156,10 @@ export default function AdminServices() {
                   <span className="font-bold text-emerald-300">{money(s.rate, currency())}/1k</span>
                   <span>{Number(s.min_qty).toLocaleString()}–{Number(s.max_qty).toLocaleString()}</span>
                   <Badge status={s.active === false ? 'closed' : 'active'}>{s.active === false ? 'hidden' : 'live'}</Badge>
-                  {s.provider_id && <Badge status="processing">🔌 {provName(s.provider_id)}:{s.provider_service_id}</Badge>}
+                  {s.provider_id && <Badge status="processing"><Plug size={10} /> {provName(s.provider_id)}:{s.provider_service_id}</Badge>}
                 </div>
-                <button onClick={() => toggleSvc(s)} className="mt-2 text-[12px] font-semibold text-violet-300">
-                  {s.active === false ? '▶ Show to users' : '⏸ Hide from users'}
+                <button onClick={() => toggleSvc(s)} className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-violet-300">
+                  <Power size={13} /> {s.active === false ? 'Show to users' : 'Hide from users'}
                 </button>
               </div>
             ))}
@@ -171,7 +171,9 @@ export default function AdminServices() {
         <div className="mt-3 space-y-2">
           {categories.map((c) => (
             <div key={c.id} className="card flex items-center gap-3 p-3.5">
-              <span className="text-2xl">{c.icon}</span>
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/5 text-violet-300">
+                <PlatformIcon platform={c.name} size={24} />
+              </span>
               <span className="flex-1">
                 <span className="block text-[14px] font-bold text-white">{c.name}</span>
                 <span className="block text-[11px] text-white/40">
@@ -220,7 +222,7 @@ export default function AdminServices() {
               <Field label="Description"><Textarea value={svcForm.description} onChange={(e) => setSvcForm({ ...svcForm, description: e.target.value })} /></Field>
 
               <div className="rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
-                <p className="mb-2 text-[12px] font-bold text-sky-200">🔌 Provider mapping (optional — for auto-forward)</p>
+                <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-sky-200"><Plug size={13} /> Provider mapping (optional — for auto-forward)</p>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Provider">
                     <Select value={svcForm.provider_id} onChange={(e) => setSvcForm({ ...svcForm, provider_id: e.target.value })}>
@@ -250,10 +252,7 @@ export default function AdminServices() {
           <Modal title={catForm.id ? 'Edit category' : 'New category'} onClose={() => setCatForm(null)}>
             <form onSubmit={saveCat} className="space-y-3.5">
               <Field label="Name"><Input value={catForm.name} onChange={(e) => setCatForm({ ...catForm, name: e.target.value })} required /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Icon (emoji)"><Input value={catForm.icon} onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} /></Field>
-                <Field label="Sort order"><Input type="number" value={catForm.sort} onChange={(e) => setCatForm({ ...catForm, sort: e.target.value })} /></Field>
-              </div>
+              <Field label="Sort order"><Input type="number" value={catForm.sort} onChange={(e) => setCatForm({ ...catForm, sort: e.target.value })} /></Field>
               <Btn type="submit" loading={busy} className="w-full">Save Category</Btn>
             </form>
           </Modal>

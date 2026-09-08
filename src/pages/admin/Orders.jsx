@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
-import { RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Skeleton, toast } from '../../components/ui'
+import { Box, Plug, RefreshCw, User, Wallet } from '../../components/icons'
 import { getAllOrders, listUsers, setOrderStatus, syncAllProviderOrders, syncOrder } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
@@ -47,7 +47,7 @@ export default function AdminOrders() {
     try {
       await setOrderStatus(edit._orig, edit.status, edit.remains)
       toast(edit.status === 'canceled' || edit.status === 'partial' || edit.status === 'refunded'
-        ? 'Status saved + auto-refund issued 💸'
+        ? 'Status saved + auto-refund issued'
         : 'Order status updated!')
       setEdit(null)
       load()
@@ -63,7 +63,7 @@ export default function AdminOrders() {
     try {
       const res = await syncOrder(o.id)
       const r = res.results?.[0]
-      toast(r?.error ? `Sync: ${r.error}` : `Synced → ${r?.status || 'ok'} ✅`)
+      toast(r?.error ? `Sync: ${r.error}` : `Synced: ${r?.status || 'ok'}`)
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -76,7 +76,7 @@ export default function AdminOrders() {
     setSyncing(true)
     try {
       const res = await syncAllProviderOrders()
-      toast(`Synced ${res.updated ?? 0} provider orders ✅`)
+      toast(`Synced ${res.updated ?? 0} provider orders`)
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -115,7 +115,7 @@ export default function AdminOrders() {
 
       <div className="mt-4 space-y-2.5">
         {loading && <Skeleton lines={4} />}
-        {!loading && list.length === 0 && <EmptyState icon="📦" title="No orders" />}
+        {!loading && list.length === 0 && <EmptyState icon={<Box size={40} />} title="No orders" />}
         {list.map((o) => {
           const svc = serviceById(services, o.service_id)
           return (
@@ -124,14 +124,14 @@ export default function AdminOrders() {
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold text-white">{shortId(o.id)}</p>
                   <div className="flex items-center gap-1.5">
-                    {o.provider_id ? <Badge status="processing">🔌 auto</Badge> : <Badge status="closed">manual</Badge>}
+                    {o.provider_id ? <Badge status="processing"><Plug size={10} /> auto</Badge> : <Badge status="closed">manual</Badge>}
                     <Badge status={o.status} />
                   </div>
                 </div>
                 <p className="mt-1 truncate text-[13px] text-white/70">{svc?.name || `#${o.service_id}`}</p>
                 <p className="truncate text-[12px] text-sky-300/70">{o.link}</p>
                 <div className="mt-2 flex items-center justify-between text-[11px] text-white/45">
-                  <span>👤 {emailOf(o.user_id)}</span>
+                  <span className="flex min-w-0 items-center gap-1"><User size={11} className="shrink-0" /> <span className="truncate">{emailOf(o.user_id)}</span></span>
                   <span>{Number(o.quantity).toLocaleString()} qty · rem {Number(o.remains ?? 0).toLocaleString()}</span>
                   <span className="font-bold text-white/70">{money(o.charge, currency())}</span>
                 </div>
@@ -167,9 +167,9 @@ export default function AdminOrders() {
           <Modal title={`Manage ${shortId(edit._orig.id)}`} onClose={() => setEdit(null)}>
             <div className="space-y-3.5">
               <div className="rounded-xl bg-white/5 p-3 text-[12px] text-white/60">
-                <p className="truncate">👤 {emailOf(edit._orig.user_id)}</p>
-                <p className="mt-0.5">💰 {money(edit._orig.charge, currency())} · Qty {Number(edit._orig.quantity).toLocaleString()}</p>
-                {edit._orig.provider_order_id && <p className="mt-0.5 font-mono">🔌 Provider: {edit._orig.provider_order_id}</p>}
+                <p className="flex items-center gap-1.5 truncate"><User size={13} /> {emailOf(edit._orig.user_id)}</p>
+                <p className="mt-0.5 flex items-center gap-1.5"><Wallet size={13} /> {money(edit._orig.charge, currency())} · Qty {Number(edit._orig.quantity).toLocaleString()}</p>
+                {edit._orig.provider_order_id && <p className="mt-0.5 flex items-center gap-1.5 font-mono"><Plug size={13} /> Provider: {edit._orig.provider_order_id}</p>}
               </div>
               <Field label="Status">
                 <Select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value })}>

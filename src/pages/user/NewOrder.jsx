@@ -1,7 +1,7 @@
-import { BadgeCheck, Clock, RefreshCcw, Wallet } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, Select, toast } from '../../components/ui'
+import { AlertCircle, BadgeCheck, Clock, Info, Plug, RefreshCcw, Wallet } from '../../components/icons'
 import { placeOrder } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { calcCharge, money } from '../../lib/utils'
@@ -34,8 +34,8 @@ export default function NewOrder() {
       const { order, forwarded } = await placeOrder(user.id, service, link.trim(), qtyNum)
       await refreshProfile()
       toast(forwarded
-        ? `Order #${order.id} placed & sent to provider! 🔌`
-        : `Order #${order.id} placed! ${money(order.charge, currency())} deducted.`)
+        ? `Order #${order.id} placed and sent to provider`
+        : `Order #${order.id} placed. ${money(order.charge, currency())} deducted.`)
       navigate('/orders')
     } catch (err) {
       toast(err.message, 'error')
@@ -53,7 +53,7 @@ export default function NewOrder() {
           <Select value={catId} onChange={(e) => { setCatId(e.target.value); setServiceId('') }} required>
             <option value="">— Select platform —</option>
             {activeCats.map((c) => (
-              <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </Select>
         </Field>
@@ -85,7 +85,16 @@ export default function NewOrder() {
                 {service.refill_days > 0 ? `${service.refill_days}-day refill` : 'No refill'}
               </span>
             </div>
-            {service.description && <p className="text-[12px] leading-relaxed text-white/45">ℹ️ {service.description}</p>}
+            {service.description && (
+              <p className="flex items-start gap-1.5 text-[12px] leading-relaxed text-white/45">
+                <Info size={13} className="mt-0.5 shrink-0" /> {service.description}
+              </p>
+            )}
+            {service.provider_id ? (
+              <p className="flex items-center gap-1.5 text-[12px] font-semibold text-sky-300">
+                <Plug size={13} /> Auto-fulfilled via connected API
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -122,9 +131,9 @@ export default function NewOrder() {
         {!affordable && qtyValid && (
           <button
             type="button" onClick={() => navigate('/funds')}
-            className="w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-200"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-200"
           >
-            ⚠️ Low balance — tap to add funds
+            <AlertCircle size={15} /> Low balance — tap to add funds
           </button>
         )}
 

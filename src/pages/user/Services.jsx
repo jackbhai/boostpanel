@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput } from '../../components/ui'
+import { PlatformIcon, RefreshCcw, Search } from '../../components/icons'
 import { PLATFORM_COLOR } from '../../data/catalog'
 import { useStore } from '../../lib/store'
 import { money } from '../../lib/utils'
@@ -51,23 +52,24 @@ export default function Services() {
           <button
             key={c.id}
             onClick={() => setCat(String(c.id))}
-            className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
               String(cat) === String(c.id) ? 'grad-btn text-white' : 'border border-white/10 bg-white/5 text-white/60'
             }`}
           >
-            {c.icon} {c.name}
+            <PlatformIcon platform={c.name} size={15} /> {c.name}
           </button>
         ))}
       </div>
 
       <div className="mt-4 space-y-5">
         {grouped.length === 0 && (
-          <EmptyState icon="🔍" title="No services found" hint="Try a different search or category." />
+          <EmptyState icon={<Search size={40} />} title="No services found" hint="Try a different search or category." />
         )}
         {grouped.map(([name, svcs]) => (
           <div key={name}>
             <div className="mb-2 flex items-center gap-2">
               <span className={`h-5 w-1 rounded-full bg-gradient-to-b ${PLATFORM_COLOR[name] || 'from-violet-500 to-fuchsia-500'}`} />
+              <PlatformIcon platform={name} size={16} className="text-white/70" />
               <p className="text-sm font-bold text-white">{name}</p>
               <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-white/45">{svcs.length}</span>
             </div>
@@ -88,8 +90,8 @@ export default function Services() {
                     <span className="font-bold text-emerald-300">{money(s.rate, currency())}<span className="font-normal text-white/40"> /1k</span></span>
                     <span>Min {Number(s.min_qty).toLocaleString()}</span>
                     <span>Max {Number(s.max_qty).toLocaleString()}</span>
-                    <span>⏱ {s.avg_time || '—'}</span>
-                    {s.refill_days > 0 && <Badge status="active">↻ {s.refill_days}d refill</Badge>}
+                    <span>{s.avg_time || '—'}</span>
+                    {s.refill_days > 0 && <Badge status="active"><RefreshCcw size={10} /> {s.refill_days}d refill</Badge>}
                   </div>
                 </button>
               ))}

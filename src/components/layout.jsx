@@ -1,7 +1,7 @@
-import { ClipboardList, Home, LayoutGrid, Plus, Settings, ShoppingCart, Users, Wallet } from 'lucide-react'
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { money } from '../lib/utils'
+import { ClipboardList, Home, LayoutGrid, Plus, Rocket, Settings, ShoppingCart, Users, Wallet } from './icons'
 
 /* ------------------------------ Guards ------------------------------ */
 
@@ -24,7 +24,9 @@ export function BootSplash() {
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center">
-        <div className="text-5xl">🚀</div>
+        <span className="grad-btn mx-auto flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg shadow-violet-600/30">
+          <Rocket size={30} className="text-white" />
+        </span>
         <p className="grad-text mt-3 text-xl font-extrabold">BoostPanel</p>
         <p className="mt-1 text-xs text-white/40">loading…</p>
       </div>
@@ -37,8 +39,8 @@ export function BootSplash() {
 export function Logo({ admin }) {
   return (
     <div className="flex items-center gap-2">
-      <span className="grad-btn flex h-9 w-9 items-center justify-center rounded-xl text-lg shadow-lg shadow-violet-600/30">
-        🚀
+      <span className="grad-btn flex h-9 w-9 items-center justify-center rounded-xl shadow-lg shadow-violet-600/30">
+        <Rocket size={19} className="text-white" />
       </span>
       <span className="text-[17px] font-extrabold tracking-tight text-white">
         Boost<span className="grad-text">Panel</span>
@@ -52,12 +54,11 @@ export function Logo({ admin }) {
   )
 }
 
-function DemoBanner() {
-  if (!isDemo) return null
+function LiveBar() {
   return (
-    <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5 text-center text-[11px] text-amber-200">
-      <span className="live-dot mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
-      Demo Mode — data stays in this browser. Connect Supabase for a real database.
+    <div className="border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-1.5 text-center text-[11px] text-emerald-200">
+      <span className="live-dot mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      Live — connected to secure cloud database
     </div>
   )
 }
@@ -119,7 +120,7 @@ export function UserLayout() {
   return (
     <div className="min-h-screen">
       <LiveBar />
-      <header className="sticky top-0 z-40 border-b border-white/5 bg-[#070b14]/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-white/5 bg-black/85 backdrop-blur">
         <div className="mx-auto flex max-w-md items-center justify-between px-4 py-3">
           <button onClick={() => navigate('/')}><Logo /></button>
           <div className="flex items-center gap-2">
@@ -145,7 +146,7 @@ export function UserLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b101d]/95 backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 backdrop-blur">
         <div className="mx-auto flex max-w-md items-stretch px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1">
           {USER_TABS_LEFT.map((t) => <Tab key={t.to} {...t} end={t.to === '/'} />)}
           <OrderFab />
@@ -171,7 +172,7 @@ export function AdminLayout() {
   return (
     <div className="min-h-screen">
       <LiveBar />
-      <header className="sticky top-0 z-40 border-b border-amber-500/15 bg-[#0d0a14]/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-amber-500/15 bg-black/90 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <button onClick={() => navigate('/admin')}><Logo admin /></button>
           <button
@@ -187,7 +188,7 @@ export function AdminLayout() {
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#0b101d]/95 backdrop-blur">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-black/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-stretch px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-1">
           {ADMIN_TABS.map((t) => <Tab key={t.to} {...t} end={t.end} />)}
         </div>

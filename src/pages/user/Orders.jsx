@@ -1,7 +1,7 @@
-import { ExternalLink, RefreshCcw, XCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
+import { Box, ExternalLink, RefreshCcw, XCircle } from '../../components/icons'
 import { cancelOrder, getUserOrders, refillOrder } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
 import { money, progressOf, shortId, timeAgo } from '../../lib/utils'
@@ -84,7 +84,7 @@ export default function Orders() {
         {loading && <Skeleton lines={4} />}
         {!loading && list.length === 0 && (
           <EmptyState
-            icon="📦"
+            icon={<Box size={40} />}
             title="No orders found"
             hint={filter === 'all' ? 'Your orders will show up here.' : `Nothing with status "${filter}".`}
             action={<Link to="/order" className="grad-btn rounded-xl px-4 py-2 text-sm font-semibold text-white">Place an order</Link>}

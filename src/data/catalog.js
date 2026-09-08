@@ -1,13 +1,13 @@
 /** Service catalog — mirrored in supabase/seed.sql (same ids). Rates = ₹ per 1000. */
 
 export const CATEGORIES = [
-  { id: 1, name: 'Instagram', icon: '📸', sort: 1, active: true },
-  { id: 2, name: 'YouTube', icon: '▶️', sort: 2, active: true },
-  { id: 3, name: 'TikTok', icon: '🎵', sort: 3, active: true },
-  { id: 4, name: 'Telegram', icon: '✈️', sort: 4, active: true },
-  { id: 5, name: 'Facebook', icon: '👍', sort: 5, active: true },
-  { id: 6, name: 'X (Twitter)', icon: '𝕏', sort: 6, active: true },
-  { id: 7, name: 'Spotify', icon: '🎧', sort: 7, active: true },
+  { id: 1, name: 'Instagram', icon: 'instagram', sort: 1, active: true },
+  { id: 2, name: 'YouTube', icon: 'youtube', sort: 2, active: true },
+  { id: 3, name: 'TikTok', icon: 'tiktok', sort: 3, active: true },
+  { id: 4, name: 'Telegram', icon: 'telegram', sort: 4, active: true },
+  { id: 5, name: 'Facebook', icon: 'facebook', sort: 5, active: true },
+  { id: 6, name: 'X (Twitter)', icon: 'x', sort: 6, active: true },
+  { id: 7, name: 'Spotify', icon: 'spotify', sort: 7, active: true },
 ]
 
 export const SERVICES = [

@@ -1,8 +1,8 @@
 import { AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Send } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, Select, Skeleton, Textarea, toast } from '../../components/ui'
+import { ArrowLeft, Lock, Send, Shield, Ticket as TicketIcon, User } from '../../components/icons'
 import { addTicketMessage, createTicket, getTicketWithMessages, getUserTickets, setTicketStatus } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { shortId, timeAgo } from '../../lib/utils'
@@ -49,7 +49,7 @@ export function Tickets() {
 
       {loading && <Skeleton lines={3} />}
       {!loading && tickets.length === 0 && (
-        <EmptyState icon="🎫" title="No tickets yet" hint="Facing an issue? Open your first ticket." action={<Btn onClick={() => setShowNew(true)}>Open Ticket</Btn>} />
+        <EmptyState icon={<TicketIcon size={40} />} title="No tickets yet" hint="Facing an issue? Open your first ticket." action={<Btn onClick={() => setShowNew(true)}>Open Ticket</Btn>} />
       )}
       <div className="space-y-2.5">
         {tickets.map((t) => (
@@ -155,7 +155,7 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
   }
 
   if (loading) return <Skeleton lines={4} />
-  if (!ticket) return <EmptyState icon="🎫" title="Ticket not found" action={<Btn onClick={() => navigate(backTo)}>Go back</Btn>} />
+  if (!ticket) return <EmptyState icon={<TicketIcon size={40} />} title="Ticket not found" action={<Btn onClick={() => navigate(backTo)}>Go back</Btn>} />
 
   return (
     <div>
@@ -185,8 +185,8 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 ${mine ? 'grad-btn rounded-br-md text-white' : 'card rounded-bl-md'}`}>
                 {!mine && (
-                  <p className={`mb-0.5 text-[10px] font-bold uppercase tracking-wide ${m.sender_role === 'admin' ? 'text-amber-300' : 'text-sky-300'}`}>
-                    {m.sender_role === 'admin' ? '🛠️ Support' : '👤 User'}
+                  <p className={`mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide ${m.sender_role === 'admin' ? 'text-amber-300' : 'text-sky-300'}`}>
+                    {m.sender_role === 'admin' ? <><Shield size={10} /> Support</> : <><User size={10} /> User</>}
                   </p>
                 )}
                 <p className="text-[13px] leading-relaxed">{m.message}</p>
@@ -203,15 +203,15 @@ export function TicketDetail({ role = 'user', backTo = '/tickets', onStatusChang
             value={reply}
             onChange={(e) => setReply(e.target.value)}
             placeholder="Type your message…"
-            className="w-full rounded-xl border border-white/10 bg-[#11182c] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-500/60"
+            className="w-full rounded-xl border border-white/10 bg-[#0D0D0D] px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet-500/60"
           />
           <button type="submit" disabled={busy || !reply.trim()} className="grad-btn flex h-[46px] w-[52px] shrink-0 items-center justify-center rounded-xl text-white disabled:opacity-50">
             <Send size={18} />
           </button>
         </form>
       ) : (
-        <p className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-center text-[13px] text-white/45">
-          🔒 This ticket is closed. {role === 'user' ? 'Open a new ticket if you need more help.' : ''}
+        <p className="mt-4 flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 p-3 text-center text-[13px] text-white/45">
+          <Lock size={14} /> This ticket is closed. {role === 'user' ? 'Open a new ticket if you need more help.' : ''}
         </p>
       )}
     </div>

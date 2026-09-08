@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
-import { Download, Pencil, Plus, Trash2, Wifi } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Select, Skeleton, toast } from '../../components/ui'
+import { Download, LinkIcon, Pencil, Plug, Plus, Power, Trash2, Wallet, Wifi } from '../../components/icons'
 import { deleteProvider, fetchProviderServices, importProviderServices, listProviders, saveProvider, testProvider } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
@@ -28,7 +28,7 @@ export default function AdminProviders() {
     setBusy(true)
     try {
       await saveProvider(form)
-      toast('Provider saved! ✅')
+      toast('Provider saved!')
       setForm(null)
       load()
     } catch (err) {
@@ -63,7 +63,7 @@ export default function AdminProviders() {
     setTesting(p.id)
     try {
       const res = await testProvider(p.id)
-      toast(`Connected! Balance: ${res.balance} ${res.currency || ''} ✅`)
+      toast(`Connected! Balance: ${res.balance} ${res.currency || ''}`)
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -107,7 +107,7 @@ export default function AdminProviders() {
     try {
       const cat = categories.find((c) => String(c.id) === String(imp.categoryId))
       const n = await importProviderServices(imp.provider, items, imp.markup, imp.categoryId, cat?.name || '')
-      toast(`Imported ${n} services with ${imp.markup}% margin! 🎉`)
+      toast(`Imported ${n} services with ${imp.markup}% margin!`)
       setImp(null)
       refreshCatalog()
     } catch (err) {
@@ -125,16 +125,17 @@ export default function AdminProviders() {
         right={<Btn onClick={() => setForm({ name: '', api_url: '', api_key: '', status: 'active' })} className="!px-3.5 !py-2 text-[13px]"><Plus size={15} /> Add</Btn>}
       />
 
-      <div className="card border-sky-500/25 bg-sky-500/5 p-3.5 text-[12px] leading-relaxed text-white/60">
-        🔌 <b className="text-white/85">How it works:</b> add your provider's API URL + key →
+      <div className="card flex items-start gap-2 border-sky-500/25 bg-sky-500/5 p-3.5 text-[12px] leading-relaxed text-white/60">
+        <Plug size={16} className="mt-0.5 shrink-0 text-sky-300" />
+        <p><b className="text-white/85">How it works:</b> add your provider's API URL + key →
         Test → Import services with your margin → user orders forward <b className="text-white/85">automatically</b>,
-        status syncs back. Standard Perfect Panel API (action=add/status/services…).
+        status syncs back. Standard Perfect Panel API (action=add/status/services…).</p>
       </div>
 
       <div className="mt-3 space-y-2.5">
         {loading && <Skeleton lines={2} />}
         {!loading && providers.length === 0 && (
-          <EmptyState icon="🔌" title="No providers yet" hint="Add your first source API to automate fulfillment." action={<Btn onClick={() => setForm({ name: '', api_url: '', api_key: '', status: 'active' })}>Add Provider</Btn>} />
+          <EmptyState icon={<Plug size={40} />} title="No providers yet" hint="Add your first source API to automate fulfillment." action={<Btn onClick={() => setForm({ name: '', api_url: '', api_key: '', status: 'active' })}>Add Provider</Btn>} />
         )}
         {providers.map((p) => (
           <div key={p.id} className={`card p-3.5 ${p.status !== 'active' ? 'opacity-55' : ''}`}>
@@ -146,8 +147,8 @@ export default function AdminProviders() {
               <Badge status={p.status === 'active' ? 'active' : 'closed'}>{p.status}</Badge>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/50">
-              <span>💰 {money(p.balance, p.currency ? `${p.currency} ` : currency())}</span>
-              <span>🔗 {mappedCount(p.id)} mapped</span>
+              <span className="flex items-center gap-1"><Wallet size={13} /> {money(p.balance, p.currency ? `${p.currency} ` : currency())}</span>
+              <span className="flex items-center gap-1"><LinkIcon size={13} /> {mappedCount(p.id)} mapped</span>
               {p.last_sync && <span>synced {timeAgo(p.last_sync)}</span>}
             </div>
             <div className="mt-3 grid grid-cols-4 gap-1.5">
@@ -164,8 +165,8 @@ export default function AdminProviders() {
                 <Trash2 size={13} />
               </button>
             </div>
-            <button onClick={() => toggle(p)} className="mt-2 text-[12px] font-semibold text-violet-300">
-              {p.status === 'active' ? '⏸ Disable auto-forward' : '▶ Enable auto-forward'}
+            <button onClick={() => toggle(p)} className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-violet-300">
+              <Power size={13} /> {p.status === 'active' ? 'Disable auto-forward' : 'Enable auto-forward'}
             </button>
           </div>
         ))}

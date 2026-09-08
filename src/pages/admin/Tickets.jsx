@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
+import { Ticket, User } from '../../components/icons'
 import { getAllTickets, listUsers } from '../../lib/db'
 import { shortId, timeAgo } from '../../lib/utils'
 
@@ -43,7 +44,7 @@ export default function AdminTickets() {
       </div>
       <div className="mt-3 space-y-2.5">
         {loading && <Skeleton lines={3} />}
-        {!loading && list.length === 0 && <EmptyState icon="🎫" title="No tickets" />}
+        {!loading && list.length === 0 && <EmptyState icon={<Ticket size={40} />} title="No tickets" />}
         {list.map((t) => (
           <Link key={t.id} to={`/admin/tickets/${t.id}`} className="card card-hover block p-3.5">
             <div className="flex items-center justify-between gap-2">
@@ -54,7 +55,9 @@ export default function AdminTickets() {
               </div>
             </div>
             <p className="mt-1 text-sm font-semibold text-white">{t.subject}</p>
-            <p className="mt-1 text-[11px] text-white/35">👤 {emailOf(t.user_id)} · {t.order_id ? `Order #${t.order_id} · ` : ''}Updated {timeAgo(t.updated_at)}</p>
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-white/35">
+              <User size={11} /> {emailOf(t.user_id)} · {t.order_id ? `Order #${t.order_id} · ` : ''}Updated {timeAgo(t.updated_at)}
+            </p>
           </Link>
         ))}
       </div>

@@ -1,7 +1,7 @@
-import { BadgeIndianRupee, Bitcoin, Copy, CreditCard, RefreshCw, Upload, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, toast } from '../../components/ui'
+import { AlertCircle, BadgeIndianRupee, Bitcoin, CheckCircle2, Copy, CreditCard, RefreshCw, Upload, X } from '../../components/icons'
 import { requestTopup, uploadProof } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { isValidUtr, upiQrDataUrl, upiUrl } from '../../lib/upi'
@@ -80,7 +80,7 @@ export default function AddFunds() {
       setFile(null)
       setPreview(null)
       setQr(null)
-      toast('Deposit request submitted! Admin will verify shortly.')
+      toast('Deposit request submitted. Admin will verify shortly.')
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -93,7 +93,7 @@ export default function AddFunds() {
       <div>
         <PageHead title="Add Funds" />
         <div className="card p-8 text-center">
-          <p className="text-3xl">🚧</p>
+          <AlertCircle size={36} className="mx-auto text-amber-300" />
           <p className="mt-2 font-bold text-white">Payments are disabled</p>
           <p className="mt-1 text-sm text-white/50">Please contact support. Add a ticket <Link to="/tickets" className="text-violet-300">here</Link>.</p>
         </div>
@@ -148,10 +148,11 @@ export default function AddFunds() {
       {/* 3 · Pay */}
       {activeMethod === 'UPI' ? (
         <div className="mt-4">
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/45">3 · Scan & pay (amount auto-filled)</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/45">3 · Scan and pay (amount auto-filled)</p>
           {!settings?.upi_id ? (
-            <div className="card border-amber-500/25 bg-amber-500/5 p-4 text-center text-sm text-amber-200">
-              ⚠️ Admin has not added a UPI ID yet. Please try later or open a ticket.
+            <div className="card flex items-center gap-2 border-amber-500/25 bg-amber-500/5 p-4 text-sm text-amber-200">
+              <AlertCircle size={18} className="shrink-0" />
+              Admin has not added a UPI ID yet. Please try later or open a ticket.
             </div>
           ) : !qr ? (
             <Btn variant="ghost" onClick={makeQr} loading={qrBusy} className="w-full py-3">
@@ -225,9 +226,9 @@ export default function AddFunds() {
 
       {done && (
         <div className="card mt-4 border-emerald-500/25 bg-emerald-500/5 p-4 text-center">
-          <p className="text-2xl">✅</p>
+          <CheckCircle2 size={32} className="mx-auto text-emerald-300" />
           <p className="mt-1 text-sm font-bold text-white">Request received!</p>
-          <p className="mt-0.5 text-[13px] text-white/55">Admin will verify your screenshot & UTR, then approve. Track it in <Link to="/transactions" className="font-semibold text-violet-300">Transactions</Link>.</p>
+          <p className="mt-0.5 text-[13px] text-white/55">Admin will verify your screenshot and UTR, then approve. Track it in <Link to="/transactions" className="font-semibold text-violet-300">Transactions</Link>.</p>
         </div>
       )}
     </div>

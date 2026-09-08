@@ -1,6 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, EmptyState, Modal, PageHead, Skeleton, toast } from '../../components/ui'
+import { Check, CheckCircle2, Clock, Eye, Receipt, User, X } from '../../components/icons'
 import { approveTopup, getAllTxns, listUsers, rejectTopup } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
@@ -35,7 +36,7 @@ export default function AdminFunds() {
     try {
       if (approve) await approveTopup(txn)
       else await rejectTopup(txn)
-      toast(approve ? 'Approved — balance added ✅' : 'Rejected ❌')
+      toast(approve ? 'Approved — balance added' : 'Request rejected')
       load()
     } catch (err) {
       toast(err.message, 'error')
@@ -51,27 +52,29 @@ export default function AdminFunds() {
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => setTab('pending')}
-          className={`rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'pending' ? 'grad-btn text-white' : 'card text-white/55'}`}
+          className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'pending' ? 'grad-btn text-white' : 'card text-white/55'}`}
         >
-          ⏳ Pending ({pending.length})
+          <Clock size={15} /> Pending ({pending.length})
         </button>
         <button
           onClick={() => setTab('history')}
-          className={`rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'history' ? 'grad-btn text-white' : 'card text-white/55'}`}
+          className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-bold transition ${tab === 'history' ? 'grad-btn text-white' : 'card text-white/55'}`}
         >
-          🧾 History ({history.length})
+          <Receipt size={15} /> History ({history.length})
         </button>
       </div>
 
       <div className="mt-3 space-y-2.5">
         {loading && <Skeleton lines={4} />}
         {!loading && list.length === 0 && (
-          <EmptyState icon={tab === 'pending' ? '✅' : '🧾'} title={tab === 'pending' ? 'All caught up!' : 'No history yet'} hint={tab === 'pending' ? 'No pending fund requests.' : ''} />
+          <EmptyState icon={tab === 'pending' ? <CheckCircle2 size={40} /> : <Receipt size={40} />} title={tab === 'pending' ? 'All caught up!' : 'No history yet'} hint={tab === 'pending' ? 'No pending fund requests.' : ''} />
         )}
         {list.map((t) => (
           <div key={t.id} className="card p-3.5">
             <div className="flex items-center justify-between gap-2">
-              <p className="truncate text-[13px] font-bold text-white">👤 {emailOf(t.user_id)}</p>
+              <p className="flex min-w-0 items-center gap-1.5 truncate text-[13px] font-bold text-white">
+                <User size={14} className="shrink-0 text-white/50" /> <span className="truncate">{emailOf(t.user_id)}</span>
+              </p>
               <Badge status={t.status} />
             </div>
             <div className="mt-2 flex items-end justify-between gap-2">
@@ -87,7 +90,9 @@ export default function AdminFunds() {
             {t.screenshot_url && (
               <button onClick={() => setShot(t)} className="mt-2.5 block w-full overflow-hidden rounded-xl border border-white/10">
                 <img src={t.screenshot_url} alt="payment proof" className="max-h-56 w-full object-contain bg-black/40" loading="lazy" />
-                <span className="block bg-white/5 py-1.5 text-[12px] font-semibold text-violet-300">🔍 Tap to verify full screenshot</span>
+                <span className="flex items-center justify-center gap-1.5 bg-white/5 py-1.5 text-[12px] font-semibold text-violet-300">
+                  <Eye size={13} /> Tap to verify full screenshot
+                </span>
               </button>
             )}
             {t.status === 'pending' && (
@@ -95,16 +100,16 @@ export default function AdminFunds() {
                 <button
                   disabled={acting === t.id}
                   onClick={() => decide(t, true)}
-                  className="rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white hover:bg-emerald-600 disabled:opacity-50"
                 >
-                  ✅ Approve
+                  <Check size={15} /> Approve
                 </button>
                 <button
                   disabled={acting === t.id}
                   onClick={() => decide(t, false)}
-                  className="rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white hover:bg-rose-600 disabled:opacity-50"
                 >
-                  ❌ Reject
+                  <X size={15} /> Reject
                 </button>
               </div>
             )}
@@ -117,22 +122,22 @@ export default function AdminFunds() {
           <Modal title={`Proof · ${money(shot.amount, currency())}`} onClose={() => setShot(null)} wide>
             <img src={shot.screenshot_url} alt="proof full" className="max-h-[60vh] w-full rounded-xl object-contain bg-black/40" />
             <div className="mt-3 rounded-xl bg-white/5 p-3 text-[13px] text-white/70">
-              <p>👤 {emailOf(shot.user_id)}</p>
+              <p className="flex items-center gap-1.5"><User size={13} /> {emailOf(shot.user_id)}</p>
               <p className="mt-0.5">UTR: <span className="font-mono font-bold text-violet-200">{shot.txn_ref || '—'}</span> · {shot.method}</p>
             </div>
             {shot.status === 'pending' && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   onClick={async () => { setShot(null); await decide(shot, true) }}
-                  className="rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600/90 py-2.5 text-sm font-bold text-white"
                 >
-                  ✅ Approve
+                  <Check size={15} /> Approve
                 </button>
                 <button
                   onClick={async () => { setShot(null); await decide(shot, false) }}
-                  className="rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600/90 py-2.5 text-sm font-bold text-white"
                 >
-                  ❌ Reject
+                  <X size={15} /> Reject
                 </button>
               </div>
             )}

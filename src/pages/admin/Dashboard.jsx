@@ -2,19 +2,22 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Badge, EmptyState, PageHead, Skeleton, Stat, toast } from '../../components/ui'
+import { Box, ClipboardList, Clock, Plug, Settings, ShoppingCart, Ticket, Users, Wallet } from '../../components/icons'
 import { getAdminStats, getAllOrders } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
 
 const MANAGE = [
-  { to: '/admin/orders', icon: '🛒', label: 'Orders' },
-  { to: '/admin/users', icon: '👥', label: 'Users' },
-  { to: '/admin/services', icon: '📋', label: 'Services' },
-  { to: '/admin/providers', icon: '🔌', label: 'API' },
-  { to: '/admin/funds', icon: '💰', label: 'Funds' },
-  { to: '/admin/tickets', icon: '🎫', label: 'Tickets' },
-  { to: '/admin/settings', icon: '⚙️', label: 'Settings' },
+  { to: '/admin/orders', icon: ShoppingCart, label: 'Orders' },
+  { to: '/admin/users', icon: Users, label: 'Users' },
+  { to: '/admin/services', icon: ClipboardList, label: 'Services' },
+  { to: '/admin/providers', icon: Plug, label: 'API' },
+  { to: '/admin/funds', icon: Wallet, label: 'Funds' },
+  { to: '/admin/tickets', icon: Ticket, label: 'Tickets' },
+  { to: '/admin/settings', icon: Settings, label: 'Settings' },
 ]
+
+const TOOLTIP_STYLE = { background: '#0D0D0D', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }
 
 export default function AdminDashboard() {
   const { currency } = useStore()
@@ -34,20 +37,20 @@ export default function AdminDashboard() {
 
   return (
     <div>
-      <PageHead title="Admin Dashboard" sub="Full control of your panel 📊" />
+      <PageHead title="Admin Dashboard" sub="Full control of your panel" />
 
       {loading || !stats ? (
         <Skeleton lines={3} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-2.5">
-            <Stat label="Revenue" value={money(stats.revenue, currency())} icon="💰" accent="text-emerald-300" sub={`${stats.orders} orders`} />
-            <Stat label="Users" value={stats.users} icon="👥" accent="text-sky-300" sub="registered" />
+            <Stat label="Revenue" value={money(stats.revenue, currency())} icon={<Wallet size={20} />} accent="text-emerald-300" sub={`${stats.orders} orders`} />
+            <Stat label="Users" value={stats.users} icon={<Users size={20} />} accent="text-sky-300" sub="registered" />
             <Link to="/admin/funds" className="block">
-              <Stat label="Pending funds" value={stats.pendingFunds} icon="⏳" accent={stats.pendingFunds ? 'text-amber-300' : 'text-white'} sub="need approval" />
+              <Stat label="Pending funds" value={stats.pendingFunds} icon={<Clock size={20} />} accent={stats.pendingFunds ? 'text-amber-300' : 'text-white'} sub="need approval" />
             </Link>
             <Link to="/admin/tickets" className="block">
-              <Stat label="Open tickets" value={stats.openTickets} icon="🎫" accent={stats.openTickets ? 'text-rose-300' : 'text-white'} sub="need reply" />
+              <Stat label="Open tickets" value={stats.openTickets} icon={<Ticket size={20} />} accent={stats.openTickets ? 'text-rose-300' : 'text-white'} sub="need reply" />
             </Link>
           </div>
 
@@ -66,7 +69,7 @@ export default function AdminDashboard() {
                   <XAxis dataKey="day" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
                   <Tooltip
-                    contentStyle={{ background: '#11182c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }}
+                    contentStyle={TOOLTIP_STYLE}
                     formatter={(v) => [money(v, currency()), 'Revenue']}
                   />
                   <Area type="monotone" dataKey="revenue" stroke="#a78bfa" strokeWidth={2.5} fill="url(#rev)" />
@@ -83,7 +86,7 @@ export default function AdminDashboard() {
                   <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                   <XAxis dataKey="day" tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11 }} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: '#11182c', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 12 }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="orders" fill="#22d3ee" radius={[6, 6, 2]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -95,8 +98,8 @@ export default function AdminDashboard() {
       <p className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-white/45">Manage</p>
       <div className="grid grid-cols-3 gap-2.5">
         {MANAGE.map((m) => (
-          <Link key={m.to} to={m.to} className="card card-hover relative flex flex-col items-center gap-1 px-2 py-4">
-            <span className="text-2xl">{m.icon}</span>
+          <Link key={m.to} to={m.to} className="card card-hover relative flex flex-col items-center gap-1.5 px-2 py-4">
+            <m.icon size={26} className="text-violet-300" />
             <span className="text-[12px] font-semibold text-white/80">{m.label}</span>
             {m.to === '/admin/funds' && stats?.pendingFunds > 0 && (
               <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-black">
@@ -113,7 +116,7 @@ export default function AdminDashboard() {
       </div>
 
       <p className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-white/45">Latest orders</p>
-      {recent.length === 0 && !loading && <EmptyState icon="📦" title="No orders yet" />}
+      {recent.length === 0 && !loading && <EmptyState icon={<Box size={40} />} title="No orders yet" />}
       <div className="space-y-2">
         {recent.map((o) => (
           <Link key={o.id} to="/admin/orders" className="card card-hover flex items-center gap-3 p-3">

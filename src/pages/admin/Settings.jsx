@@ -1,7 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Btn, Field, Input, Modal, PageHead, Textarea, toast } from '../../components/ui'
+import { Megaphone, Pencil, Plus, Settings as SettingsIcon, Trash2, Wallet } from '../../components/icons'
 import { deleteAnnouncement, getAnnouncements, getSettings, saveAnnouncement, saveSettings } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { timeAgo } from '../../lib/utils'
@@ -30,7 +30,7 @@ export default function AdminSettings() {
     try {
       await saveSettings({ ...form, min_deposit: Number(form.min_deposit) })
       await refreshSettings()
-      toast('Settings saved! ✅')
+      toast('Settings saved!')
     } catch (err) {
       toast(err.message, 'error')
     } finally {
@@ -44,7 +44,7 @@ export default function AdminSettings() {
       await saveAnnouncement(annForm)
       setAnnForm(null)
       setAnns(await getAnnouncements(false))
-      toast('Announcement saved! 📢')
+      toast('Announcement saved!')
     } catch (err) {
       toast(err.message, 'error')
     }
@@ -74,7 +74,7 @@ export default function AdminSettings() {
       <PageHead title="Setup" sub="Panel, payments & announcements." />
 
       <form onSubmit={save} className="card space-y-3.5 p-4">
-        <p className="text-sm font-bold text-white">⚙️ General</p>
+        <p className="flex items-center gap-1.5 text-sm font-bold text-white"><SettingsIcon size={15} /> General</p>
         <Field label="Site name">
           <Input value={form.site_name} onChange={(e) => setForm({ ...form, site_name: e.target.value })} />
         </Field>
@@ -93,7 +93,7 @@ export default function AdminSettings() {
           <Input placeholder="e.g. Maintenance at midnight" value={form.notice} onChange={(e) => setForm({ ...form, notice: e.target.value })} />
         </Field>
 
-        <p className="pt-1 text-sm font-bold text-white">💰 Payments (UPI)</p>
+        <p className="flex items-center gap-1.5 pt-1 text-sm font-bold text-white"><Wallet size={15} /> Payments (UPI)</p>
         <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 text-[12px] leading-relaxed text-white/60">
           Add your UPI ID — users will see a <b className="text-white">QR with the amount pre-filled</b>,
           pay, then submit the <b className="text-white">12-digit UTR + screenshot</b> for your approval.
@@ -105,9 +105,9 @@ export default function AdminSettings() {
           <Input placeholder="e.g. BoostPanel" value={form.upi_payee} onChange={(e) => setForm({ ...form, upi_payee: e.target.value })} />
         </Field>
         <div className="space-y-2">
-          <Toggle k="pay_upi" label="🟢 Enable UPI" />
-          <Toggle k="pay_card" label="💳 Enable Card (manual)" />
-          <Toggle k="pay_crypto" label="₿ Enable Crypto (manual)" />
+          <Toggle k="pay_upi" label="Enable UPI" />
+          <Toggle k="pay_card" label="Enable Card (manual)" />
+          <Toggle k="pay_crypto" label="Enable Crypto (manual)" />
         </div>
         {form.pay_card && (
           <Field label="Card payment instructions (shown to users)">
@@ -124,7 +124,7 @@ export default function AdminSettings() {
       </form>
 
       <div className="mb-2 mt-5 flex items-center justify-between">
-        <p className="text-xs font-bold uppercase tracking-wide text-white/45">📢 Announcements</p>
+        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-white/45"><Megaphone size={13} /> Announcements</p>
         <Btn onClick={() => setAnnForm({ title: '', body: '', active: true })} className="!px-3 !py-1.5 text-[12px]">
           <Plus size={14} /> New
         </Btn>
@@ -136,7 +136,7 @@ export default function AdminSettings() {
               <div>
                 <p className="text-sm font-bold text-white">{a.title}</p>
                 <p className="mt-0.5 text-[13px] text-white/55">{a.body}</p>
-                <p className="mt-1 text-[11px] text-white/35">{a.active ? '🟢 visible' : '⚪ hidden'} · {timeAgo(a.created_at)}</p>
+                <p className="mt-1 text-[11px] text-white/35">{a.active ? 'Visible' : 'Hidden'} · {timeAgo(a.created_at)}</p>
               </div>
               <div className="flex shrink-0 gap-1.5">
                 <button onClick={() => setAnnForm({ ...a })} className="rounded-lg bg-white/5 p-1.5 text-white/60"><Pencil size={14} /></button>

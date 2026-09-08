@@ -1,18 +1,18 @@
-import { ArrowRight, Layers, LifeBuoy, Megaphone, Plus, ShoppingCart, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton } from '../../components/ui'
+import { ArrowRight, Box, ClipboardList, Layers, LifeBuoy, Megaphone, Plug, Plus, ShoppingCart, Ticket, Wallet } from '../../components/icons'
 import { getAnnouncements, getUserOrders, getUserStats } from '../../lib/db'
 import { serviceById, useStore } from '../../lib/store'
 import { money, shortId, timeAgo } from '../../lib/utils'
 
 const QUICK = [
-  { to: '/order', icon: '🛒', label: 'New Order' },
-  { to: '/mass-order', icon: '📦', label: 'Mass Order' },
-  { to: '/services', icon: '📋', label: 'Services' },
-  { to: '/funds', icon: '💰', label: 'Add Funds' },
-  { to: '/tickets', icon: '🎫', label: 'Tickets' },
-  { to: '/api', icon: '🔌', label: 'API' },
+  { to: '/order', icon: ShoppingCart, label: 'New Order' },
+  { to: '/mass-order', icon: Box, label: 'Mass Order' },
+  { to: '/services', icon: ClipboardList, label: 'Services' },
+  { to: '/funds', icon: Wallet, label: 'Add Funds' },
+  { to: '/tickets', icon: Ticket, label: 'Tickets' },
+  { to: '/api', icon: Plug, label: 'API' },
 ]
 
 export default function Dashboard() {
@@ -38,7 +38,7 @@ export default function Dashboard() {
   return (
     <div>
       <PageHead
-        title={`Hello, ${(profile?.email || '').split('@')[0] || 'there'} 👋`}
+        title={`Hello, ${(profile?.email || '').split('@')[0] || 'there'}`}
         sub={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
       />
 
@@ -88,8 +88,8 @@ export default function Dashboard() {
       <p className="mb-2 mt-5 text-xs font-bold uppercase tracking-wide text-white/45">Quick actions</p>
       <div className="grid grid-cols-3 gap-2.5">
         {QUICK.map((q) => (
-          <Link key={q.to} to={q.to} className="card card-hover flex flex-col items-center gap-1 px-2 py-3.5">
-            <span className="text-2xl">{q.icon}</span>
+          <Link key={q.to} to={q.to} className="card card-hover flex flex-col items-center gap-1.5 px-2 py-3.5">
+            <q.icon size={26} className="text-violet-300" />
             <span className="text-[12px] font-semibold text-white/80">{q.label}</span>
           </Link>
         ))}
@@ -101,7 +101,7 @@ export default function Dashboard() {
         <p className="text-xs font-bold uppercase tracking-wide text-white/45">Announcements</p>
       </div>
       {news.length === 0 ? (
-        <EmptyState icon="📢" title="No announcements" hint="Panel news will appear here." />
+        <EmptyState icon={<Megaphone size={40} />} title="No announcements" hint="Panel news will appear here." />
       ) : (
         <div className="space-y-2.5">
           {news.map((a) => (
@@ -125,7 +125,7 @@ export default function Dashboard() {
         <Skeleton lines={2} />
       ) : recent.length === 0 ? (
         <EmptyState
-          icon="🛒"
+          icon={<ShoppingCart size={40} />}
           title="No orders yet"
           hint="Place your first order in seconds."
           action={<Link to="/order" className="grad-btn rounded-xl px-4 py-2 text-sm font-semibold text-white">New Order</Link>}

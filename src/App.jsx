@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom'
 import { AdminLayout, BootSplash, RequireAdmin, RequireAuth, UserLayout } from './components/layout'
 import { Toasts } from './components/ui'
+import { Plug } from './components/icons'
 import { useStore } from './lib/store'
 import { Login, Signup } from './pages/auth'
 import AdminDashboard from './pages/admin/Dashboard'
@@ -32,7 +33,7 @@ function SetupNeeded() {
   return (
     <div className="flex min-h-screen items-center justify-center px-6">
       <div className="card max-w-md p-8 text-center">
-        <p className="text-4xl">🔌</p>
+        <Plug size={40} className="mx-auto text-violet-300" />
         <h1 className="mt-3 text-xl font-extrabold text-white">Backend not configured</h1>
         <p className="mt-2 text-sm leading-relaxed text-white/55">
           Add your Supabase credentials to <span className="font-mono text-violet-300">.env</span> and

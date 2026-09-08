@@ -1,4 +1,4 @@
-import { Copy, LogOut } from 'lucide-react'
+import { Copy, LogOut } from '../../components/icons'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, toast } from '../../components/ui'

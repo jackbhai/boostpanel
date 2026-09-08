@@ -1,6 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Btn, EmptyState, Field, Input, Modal, PageHead, SearchInput, Skeleton, toast } from '../../components/ui'
+import { Shield, User, Users as UsersIcon, XCircle } from '../../components/icons'
 import { adjustBalance, listUsers, updateProfile } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
@@ -55,10 +56,10 @@ export default function AdminUsers() {
   }
 
   const setStatus = async (status) => {
-    if (edit.id === me.id) return toast('You cannot ban yourself 😅', 'error')
+    if (edit.id === me.id) return toast('You cannot ban yourself', 'error')
     try {
       await updateProfile(edit.id, { status })
-      toast(status === 'banned' ? 'User banned 🚫' : 'User unbanned ✅')
+      toast(status === 'banned' ? 'User banned' : 'User unbanned')
       load()
       setEdit(null)
     } catch (err) {
@@ -73,7 +74,7 @@ export default function AdminUsers() {
 
       <div className="mt-4 space-y-2.5">
         {loading && <Skeleton lines={4} />}
-        {!loading && list.length === 0 && <EmptyState icon="👥" title="No users found" />}
+        {!loading && list.length === 0 && <EmptyState icon={<UsersIcon size={40} />} title="No users found" />}
         {list.map((u) => (
           <button key={u.id} onClick={() => setEdit(u)} className="card card-hover flex w-full items-center gap-3 p-3.5 text-left">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/40 to-fuchsia-500/40 text-lg font-bold text-white">
@@ -113,15 +114,15 @@ export default function AdminUsers() {
 
               <Field label="Role">
                 <div className="grid grid-cols-2 gap-2">
-                  <Btn variant={edit.role === 'user' ? 'primary' : 'ghost'} onClick={() => setRole('user')}>👤 User</Btn>
-                  <Btn variant={edit.role === 'admin' ? 'primary' : 'ghost'} onClick={() => setRole('admin')}>🛠️ Admin</Btn>
+                  <Btn variant={edit.role === 'user' ? 'primary' : 'ghost'} onClick={() => setRole('user')}><User size={15} /> User</Btn>
+                  <Btn variant={edit.role === 'admin' ? 'primary' : 'ghost'} onClick={() => setRole('admin')}><Shield size={15} /> Admin</Btn>
                 </div>
               </Field>
 
               {edit.status === 'banned' ? (
                 <Btn variant="success" onClick={() => setStatus('active')} className="w-full">Unban User</Btn>
               ) : (
-                <Btn variant="danger" onClick={() => setStatus('banned')} className="w-full">Ban User 🚫</Btn>
+                <Btn variant="danger" onClick={() => setStatus('banned')} className="w-full"><XCircle size={15} /> Ban User</Btn>
               )}
             </div>
           </Modal>

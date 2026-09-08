@@ -1,7 +1,7 @@
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton, toast } from '../../components/ui'
+import { ArrowDownLeft, ArrowUpRight, Receipt } from '../../components/icons'
 import { getUserTxns } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { money, timeAgo } from '../../lib/utils'
@@ -42,15 +42,19 @@ export default function Transactions() {
       </div>
 
       <div className="mt-4 flex gap-2">
-        {['all', 'credit', 'debit'].map((f) => (
+        {[
+          { id: 'all', label: 'All', icon: null },
+          { id: 'credit', label: 'Credits', icon: ArrowDownLeft },
+          { id: 'debit', label: 'Debits', icon: ArrowUpRight },
+        ].map((f) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`flex-1 rounded-xl px-3 py-2 text-[13px] font-semibold capitalize transition ${
-              filter === f ? 'grad-btn text-white' : 'border border-white/10 bg-white/5 text-white/55'
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold capitalize transition ${
+              filter === f.id ? 'grad-btn text-white' : 'border border-white/10 bg-white/5 text-white/55'
             }`}
           >
-            {f === 'all' ? 'All' : f === 'credit' ? '⬇️ Credits' : '⬆️ Debits'}
+            {f.icon && <f.icon size={14} />} {f.label}
           </button>
         ))}
       </div>
@@ -58,7 +62,7 @@ export default function Transactions() {
       <div className="mt-3 space-y-2.5">
         {loading && <Skeleton lines={4} />}
         {!loading && list.length === 0 && (
-          <EmptyState icon="🧾" title="No transactions" hint="Top-ups and order charges will appear here." />
+          <EmptyState icon={<Receipt size={40} />} title="No transactions" hint="Top-ups and order charges will appear here." />
         )}
         {list.map((t) => {
           const credit = t.type === 'credit'

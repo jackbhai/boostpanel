@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertCircle, CheckCircle2, Search, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Search, X } from './icons'
 import { create } from 'zustand'
 import { statusLabel, statusStyle } from '../lib/utils'
 
@@ -134,7 +134,7 @@ export function PageHead({ title, sub, right }) {
 export function EmptyState({ icon, title, hint, action }) {
   return (
     <div className="card flex flex-col items-center px-6 py-10 text-center">
-      <div className="mb-3 text-4xl">{icon || '📭'}</div>
+      {icon && <div className="mb-3 text-white/20">{icon}</div>}
       <p className="font-semibold text-white">{title}</p>
       {hint && <p className="mt-1 text-[13px] text-white/45">{hint}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -169,7 +169,7 @@ export function Modal({ title, onClose, children, wide }) {
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: 20, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full ${wide ? 'sm:max-w-lg' : 'sm:max-w-md'} rounded-t-2xl border border-white/10 bg-[#0d1322] p-5 sm:rounded-2xl`}
+        className={`w-full ${wide ? 'sm:max-w-lg' : 'sm:max-w-md'} rounded-t-2xl border border-white/10 bg-[#0A0A0A] p-5 sm:rounded-2xl`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="font-bold text-white">{title}</h3>
@@ -188,7 +188,7 @@ export function Stat({ label, value, icon, sub, accent }) {
     <div className="card card-hover p-3.5">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">{label}</p>
-        {icon && <span className="text-lg">{icon}</span>}
+        {icon && <span className="text-white/60">{icon}</span>}
       </div>
       <p className={`mt-1 text-lg font-bold ${accent || 'text-white'}`}>{value}</p>
       {sub && <p className="mt-0.5 text-[11px] text-white/40">{sub}</p>}

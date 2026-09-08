@@ -41,7 +41,7 @@ export function Login() {
 
   return (
     <Shell
-      title="Welcome back 👋"
+      title="Welcome back"
       sub="Log in to your SMM panel account"
       footer={<>New here? <Link to="/signup" className="font-semibold text-violet-300">Create an account</Link></>}
     >
@@ -76,7 +76,7 @@ export function Signup() {
         navigate('/login', { replace: true })
         return
       }
-      toast(res?.role === 'admin' ? 'Welcome, Admin! First account = admin 🛠️' : 'Account created! Welcome aboard 🎉')
+      toast(res?.role === 'admin' ? 'Welcome, Admin! First account = admin' : 'Account created! Welcome aboard')
       navigate(res?.role === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err) {
       toast(err.message, 'error')
@@ -85,7 +85,7 @@ export function Signup() {
 
   return (
     <Shell
-      title="Create account ✨"
+      title="Create account"
       sub="Start ordering in under a minute"
       footer={<>Already have an account? <Link to="/login" className="font-semibold text-violet-300">Log in</Link></>}
     >

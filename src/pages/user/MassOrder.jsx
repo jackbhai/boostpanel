@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Btn, Field, PageHead, Textarea, toast } from '../../components/ui'
+import { CheckCircle2, XCircle } from '../../components/icons'
 import { placeOrder } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { calcCharge, money } from '../../lib/utils'
@@ -85,7 +86,9 @@ export default function MassOrder() {
       {lines.some((l) => l.error) && (
         <div className="card mt-3 space-y-1 border-rose-500/25 bg-rose-500/5 p-3.5">
           {lines.filter((l) => l.error).slice(0, 5).map((l, i) => (
-            <p key={i} className="text-[12px] text-rose-200">⚠️ Line #{l.id || '?'}: {l.error}</p>
+            <p key={i} className="flex items-start gap-1.5 text-[12px] text-rose-200">
+              <XCircle size={13} className="mt-0.5 shrink-0" /> Line #{l.id || '?'}: {l.error}
+            </p>
           ))}
           {lines.filter((l) => l.error).length > 5 && (
             <p className="text-[12px] text-rose-200/70">…and more</p>
@@ -112,9 +115,13 @@ export default function MassOrder() {
 
       {result && (
         <div className="card mt-3 p-4 text-[13px]">
-          <p className="font-bold text-emerald-300">✅ {result.ok} placed</p>
+          <p className="flex items-center gap-1.5 font-bold text-emerald-300">
+            <CheckCircle2 size={15} /> {result.ok} placed
+          </p>
           {result.errors.map((e, i) => (
-            <p key={i} className="mt-1 text-rose-200">❌ {e}</p>
+            <p key={i} className="mt-1 flex items-start gap-1.5 text-rose-200">
+              <XCircle size={13} className="mt-0.5 shrink-0" /> {e}
+            </p>
           ))}
           {result.ok > 0 && (
             <button onClick={() => navigate('/orders')} className="mt-3 font-semibold text-violet-300">

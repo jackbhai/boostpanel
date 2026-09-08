@@ -2,8 +2,8 @@
 
 @theme {
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --color-night: #070b14;
-  --color-panel: #0d1322;
+  --color-night: #000000;
+  --color-panel: #0a0a0b;
   --color-accent: #8b5cf6;
 }
 
@@ -13,15 +13,14 @@ html {
 
 body {
   margin: 0;
-  background: var(--color-night);
-  color: #e6eaf2;
+  background: #000; /* AMOLED pure black */
+  color: #ededf0;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  /* subtle app background glow */
-  background-image:
-    radial-gradient(600px 300px at 10% -5%, rgba(139, 92, 246, 0.18), transparent 60%),
-    radial-gradient(500px 260px at 95% 0%, rgba(217, 70, 239, 0.12), transparent 60%);
-  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.45);
 }
 
 /* thin scrollbars */
@@ -57,7 +56,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .card {
-  background: rgba(255, 255, 255, 0.04);
+  background: #0b0b0d;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 1rem;
 }

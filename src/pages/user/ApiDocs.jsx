@@ -1,6 +1,6 @@
-import { Copy, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { Btn, PageHead, toast } from '../../components/ui'
+import { AlertCircle, Copy, RefreshCw, Sparkles } from '../../components/icons'
 import { regenerateApiKey } from '../../lib/db'
 import { useStore } from '../../lib/store'
 
@@ -50,7 +50,9 @@ export default function ApiDocs() {
           <Btn variant="ghost" onClick={copy} className="!py-2 text-[13px]"><Copy size={14} /> Copy</Btn>
           <Btn variant="ghost" onClick={regen} loading={busy} className="!py-2 text-[13px]"><RefreshCw size={14} /> Regenerate</Btn>
         </div>
-        <p className="mt-2 text-[11px] text-white/35">⚠️ Never share your key publicly. It can spend your balance.</p>
+        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-white/35">
+          <AlertCircle size={13} className="mt-0.5 shrink-0" /> Never share your key publicly. It can spend your balance.
+        </p>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -95,9 +97,10 @@ export default function ApiDocs() {
         </div>
       </div>
 
-      <p className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-[12px] leading-relaxed text-white/45">
-        💡 <b className="text-white/70">Reseller tip:</b> connect this API to your own website and sell
-        services at your own price — the classic SMM reseller model.
+      <p className="mt-4 flex items-start gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-[12px] leading-relaxed text-white/45">
+        <Sparkles size={15} className="mt-0.5 shrink-0 text-violet-300" />
+        <span><b className="text-white/70">Reseller tip:</b> connect this API to your own website and sell
+        services at your own price — the classic SMM reseller model.</span>
       </p>
     </div>
   )
