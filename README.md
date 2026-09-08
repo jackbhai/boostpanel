@@ -1,164 +1,112 @@
-# 🚀 BoostPanel — SMM Panel (User + Admin)
+# 🚀 BoostPanel — SMM Panel (User + Admin) · LIVE
 
-A **mobile-first** Social Media Marketing (SMM) panel built with **React + Vite + Supabase**.
-Includes a full **User Panel** (order services, add funds, track orders, tickets) and an
-**Admin Panel** (users, services, orders, funds approval, tickets, settings, analytics).
+**Live site:** https://jackbhai.github.io/boostpanel/
 
-> University project — demonstrates full-stack web development: frontend, database,
-> authentication, wallet logic, role-based access, and API design.
+A **mobile-first**, fully working SMM panel: **React + Vite + Supabase** (Postgres + Auth +
+Storage + Edge Functions). Zero demo data — every flow is real:
+
+- **User:** signup → add funds via **UPI QR (amount pre-filled)** → submit **12-digit UTR +
+  screenshot** → admin approves → balance credits → place orders → auto-forward to provider API → live status sync.
+- **Admin:** approve funds (verify screenshots), manage users/orders/services/tickets,
+  connect **provider APIs**, import services with margin, full analytics.
+
+> University project — demonstrates full-stack development: frontend, relational DB,
+> auth, secure RLS, file storage, serverless functions, CI/CD.
 
 ---
 
 ## ✨ Features
 
 ### 👤 User Panel
-| Page | What it does |
+| Page | Real functionality |
 |---|---|
-| Dashboard | Balance hero, stats, quick actions, announcements, recent orders |
-| New Order | Category → service → link → quantity, live price calculator, balance check |
-| Services | Searchable catalog with rates/1000, min–max, refill info |
-| Mass Order | Bulk ordering via `service_id \| link \| quantity` lines with validation |
-| Orders | Filter by status, progress bars, **Refill** & **Cancel (auto-refund)** buttons |
-| Add Funds | UPI / Card / Crypto top-up requests with UTR reference |
-| Transactions | Full wallet ledger — credits, debits, pending/approved status |
-| Tickets | Support system with chat-style replies |
-| API Docs | Personal API key + reseller integration examples |
-| Profile | Balance, API key, change password |
+| Dashboard | Live balance, stats, announcements, recent orders |
+| New Order | Category → service → link → qty, live price, auto-forward to provider |
+| Services | Search + rates/1000, min–max, refill info |
+| Mass Order | Bulk `service_id \| link \| qty` with validation |
+| Orders | Status filters, progress bars, **Refill** & **Cancel (auto-refund)** incl. provider calls |
+| Add Funds | **UPI QR with embedded amount** → pay → UTR + screenshot upload |
+| Transactions | Full wallet ledger |
+| Tickets | Chat-style support |
+| API Docs | Personal API key + reseller examples |
+| Profile | Password change, API key |
 
 ### 🛠️ Admin Panel (`/admin`)
-| Page | What it does |
+| Page | Real functionality |
 |---|---|
-| Dashboard | Revenue/orders/users stats, 7-day **charts**, pending alerts |
-| Orders | Search + filter, update status & remains (**auto-refund math**) |
-| Users | Search, add/deduct balance, make admin, ban/unban |
-| Services | Full CRUD for categories + services, hide/show services |
-| Funds | Approve ✅ / Reject ❌ top-ups (balance auto-credits on approve) |
-| Tickets | Reply to users, close/re-open tickets |
-| Setup | Site name, currency, min deposit, announcements |
+| Dashboard | Revenue/orders/users, 7-day charts, pending alerts |
+| Orders | Edit status/remains (**auto-refund**), **Push to provider**, **Sync all** |
+| API Providers | Add source API → **Test balance** → **Import services with % margin** |
+| Users | Add/deduct balance, roles, ban/unban |
+| Services | Full CRUD + provider mapping per service |
+| Funds | **Verify screenshot + UTR**, approve (auto-credit) / reject |
+| Tickets | Reply, close/re-open |
+| Setup | Site, currency, **UPI ID + payee name**, payment toggles, announcements |
 
 ---
 
 ## 🧰 Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 19 + Vite |
-| Styling | Tailwind CSS v4 (dark mobile-first theme) |
-| Routing | React Router (protected + role-based routes) |
-| State | Zustand (session, profile, catalog) |
-| Backend | **Supabase** (Postgres + Auth) — with automatic **Demo Mode** fallback (browser storage) when keys are missing |
-| Charts | Recharts |
-| Animation / Icons | Framer Motion, Lucide |
+React 19 + Vite · Tailwind v4 · React Router · Zustand · Recharts · Framer Motion ·
+Supabase (Postgres, Auth, Storage, Edge Functions) · `qrcode` (offline UPI QR) ·
+GitHub Actions → GitHub Pages.
 
 ---
 
-## ⚡ Quick Start (Demo Mode — 2 minutes, no account needed)
+## 🔑 First-Run Checklist (owner)
+
+1. Open the live site → **Sign up** — the **first account automatically becomes admin**.
+2. Log in → **Admin → Setup → Payments** → add your **UPI ID + payee name** → Save.
+3. (Optional) **Admin → API** → add provider URL + key → **Test** → **Import** services.
+4. Share the link — users sign up, top up via your QR, and order. You approve funds.
+
+## 🔌 Provider API (Perfect Panel standard)
+
+Any provider with `api/v2` supporting `balance / services / add / status / refill / cancel`
+works. The `provider-proxy` Edge Function keeps provider keys **server-side only** —
+they are never exposed to browsers (and the `providers` table is admin-only via RLS).
+
+Redeploy the function after edits:
+```bash
+SUPABASE_ACCESS_TOKEN="<token>" npx supabase functions deploy provider-proxy --project-ref <ref>
+```
+
+## 💰 Payment Flow (exactly like real panels)
+
+1. Admin sets UPI ID in Setup → Payments.
+2. User enters amount → QR encodes `upi://pay?pa=…&pn=…&am=…&cu=INR&tn=…&tr=…` (amount pre-filled in GPay/PhonePe/Paytm/BHIM).
+3. User pays, enters **12-digit UTR**, uploads **screenshot** (stored in `payment-proofs` bucket).
+4. Admin opens Funds → taps screenshot to verify → **Approve** (balance auto-credits) or Reject.
+
+## 🗄️ Database
+
+`supabase/schema.sql` (idempotent) + `supabase/seed.sql` (catalog only, no demo data).
+Secure RLS: users touch only their own rows; provider keys admin-only; role/status
+changes blocked for non-admins by a trigger; first admin via `claim_first_admin()`.
+
+## 💻 Local Dev
 
 ```bash
-cd smm-panel
 npm install
+cp .env.example .env   # fill VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Open http://localhost:5173 — the app runs in **Demo Mode** (data stays in the browser).
-Use the one-click demo logins on the login page:
+Every push to `main` auto-deploys to GitHub Pages (keys injected from Actions secrets).
 
-| Role | Email | Password |
-|---|---|---|
-| User | `user@demo.io` | `user123` |
-| Admin | `admin@demo.io` | `admin123` |
-
----
-
-## 🗄️ Supabase Setup (Real Database — ~10 minutes, FREE)
-
-1. Go to **https://supabase.com** → sign up → **New Project** (free tier is enough).
-2. In Supabase dashboard → **SQL Editor** → paste & run **`supabase/schema.sql`**, then **`supabase/seed.sql`**.
-3. **Project Settings → API** → copy the **Project URL** and **anon public key**.
-4. In this project:
-   ```bash
-   cp .env.example .env
-   ```
-   Paste your keys into `.env`:
-   ```
-   VITE_SUPABASE_URL=https://xyzcompany.supabase.co
-   VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
-   ```
-5. **Authentication → Providers → Email** → turn **OFF** "Confirm email" (so classroom signups work instantly).
-6. Restart the dev server (`npm run dev`). The Demo banner disappears — you're on the live DB.
-7. Sign up in the app, then make yourself admin (SQL Editor):
-   ```sql
-   update profiles set role = 'admin' where email = 'you@example.com';
-   ```
-
----
-
-## 📁 Project Structure
+## 📁 Structure
 
 ```
-src/
-├── lib/
-│   ├── db.js          ← ★ ALL business logic (works with BOTH backends)
-│   ├── demoDb.js      ← demo database (localStorage) — same API as Supabase layer
-│   ├── supabase.js    ← client + auto Demo-Mode detection
-│   ├── store.js       ← global state (Zustand): user, profile, catalog
-│   └── utils.js       ← money format, charge calc, time-ago, badges
-├── data/catalog.js    ← service catalog (mirrors seed.sql)
-├── components/
-│   ├── ui.jsx         ← buttons, inputs, modals, toasts, badges
-│   └── layout.jsx     ← mobile layouts, bottom nav, auth guards
-├── pages/
-│   ├── auth.jsx       ← login / signup
-│   ├── user/          ← 11 user pages
-│   └── admin/         ← 7 admin pages
-└── App.jsx            ← all routes
-supabase/
-├── schema.sql         ← tables + RLS policies
-└── seed.sql           ← categories, 24 services, settings
+src/lib/db.js          ← all business logic (orders, refunds, funds, tickets…)
+src/lib/upi.js         ← UPI deep-link builder + offline QR
+src/lib/store.js       ← global state (Zustand)
+src/pages/user/        ← 11 user pages  ·  src/pages/admin/ ← 8 admin pages
+supabase/functions/provider-proxy/ ← server-side provider bridge (Deno)
+.github/workflows/deploy.yml       ← build + deploy to Pages
 ```
 
-### How the code works (for viva / presentation)
-1. **Dual-backend design** — `lib/db.js` exposes one API (`placeOrder`, `approveTopup`…).
-   If Supabase keys exist it queries Postgres, otherwise it uses `demoDb.js` (localStorage).
-   Pages never know which backend is active — great separation of concerns.
-2. **Order flow** — `placeOrder()` validates min/max → calculates `rate × qty / 1000` →
-   checks balance → deducts → inserts order + a debit ledger row.
-3. **Refunds** — cancel/partial computes `charge × remains ÷ quantity`, credits the wallet,
-   and writes a `refund` ledger entry (money is never lost or created silently).
-4. **Route guards** — `RequireAuth` blocks logged-out users; `RequireAdmin` blocks
-   non-admins from `/admin/*` (frontend guard + `role` column in DB).
-5. **Trade-off to mention** — RLS policies are intentionally permissive for the classroom
-   demo; a production panel would scope every query to `auth.uid()` + an admin check.
+## ⚠️ Ethics Note
 
----
-
-## 🎓 Viva Questions (with short answers)
-
-1. **What is an SMM panel?** — A dashboard to browse, order and track social-media
-   marketing services (followers, likes, views…) with wallet payments and reseller APIs.
-2. **Why React + Vite?** — Component-based UI + instant dev server and fast production builds.
-3. **Why Supabase?** — Free hosted Postgres + built-in authentication; no backend server to manage.
-4. **How is the balance kept correct?** — Every balance change writes a row in `transactions`
-   (ledger), so funds can always be audited; refunds are proportional to undelivered quantity.
-5. **How do user/admin roles work?** — `profiles.role` column; `RequireAdmin` route guard
-   + admin-only pages and actions.
-6. **What is RLS?** — Row Level Security: Postgres rules that decide which rows each
-   user may read/write.
-7. **What would you add next?** — Real payment gateway (Razorpay), provider API
-   auto-sync, drip-feed scheduling, stricter RLS, unit tests.
-
----
-
-## 🌐 Deploy (free)
-
-- **Vercel / Netlify**: import this folder → build command `npm run build` → output `dist` →
-  add the two `VITE_` env vars → deploy. No server needed (Supabase hosts the data).
-
----
-
-## ⚠️ Ethics Note (for the classroom)
-
-This project is for **learning full-stack development**. Real SMM panels sell fake
-engagement, which violates the terms of Instagram, YouTube, TikTok and others, and can
-get accounts shadow-banned or deleted. Fake metrics also mislead real audiences and
-advertisers. **Build skills with this demo — grow real accounts with real content.**
+Built for **learning full-stack development**. Real SMM panels sell fake engagement,
+which violates Instagram/YouTube/TikTok terms and can get accounts banned. Build skills
+with this project — grow real accounts with real content.
