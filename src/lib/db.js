@@ -134,10 +134,24 @@ export async function deleteService(id) {
 
 /* --------------------- PROVIDER BRIDGE (server) --------------------- */
 
+/* Edge non-2xx hides the JSON body inside error.context — dig out the real message. */
+async function fnErrorMessage(error) {
+  try {
+    const ctx = error?.context
+    if (ctx && typeof ctx.json === 'function') {
+      const j = await ctx.json().catch(() => null)
+      if (j?.error) return j.error
+    }
+  } catch { /* ignore */ }
+  const m = String(error?.message || '')
+  if (m && !/non-2xx/i.test(m)) return m
+  return 'Request failed. Please try again.'
+}
+
 export async function bridge(payload) {
   try {
     const { data, error } = await sb().functions.invoke('provider-proxy', { body: payload })
-    if (error) throw new Error(error.message || 'Bridge request failed')
+    if (error) throw new Error(await fnErrorMessage(error))
     if (data?.error) throw new Error(data.error)
     return data
   } catch (err) {
@@ -152,7 +166,7 @@ export async function bridge(payload) {
 /* Call the `secure` Edge Function — the ONLY server-side writer of money. */
 async function secure(op, params = {}) {
   const { data, error } = await sb().functions.invoke('secure', { body: { op, ...params } })
-  if (error) throw new Error(error.message || 'Secure request failed')
+  if (error) throw new Error(await fnErrorMessage(error))
   if (data?.error) throw new Error(data.error)
   return data
 }
