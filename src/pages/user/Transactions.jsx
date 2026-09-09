@@ -2,6 +2,7 @@ import { downloadCSV } from '../../lib/csv'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, EmptyState, PageHead, Skeleton, toast } from '../../components/ui'
+import { BillButton } from '../../components/Bill'
 import { ArrowDownLeft, ArrowUpRight, Receipt, Download } from '../../components/icons'
 import { getUserTxns } from '../../lib/db'
 import { useLiveEvent } from '../../lib/cache'
@@ -92,11 +93,12 @@ export default function Transactions() {
                   {t.method}{t.txn_ref ? ` · ${t.txn_ref}` : ''} · {timeAgo(t.created_at)}
                 </p>
               </div>
-              <div className="text-right">
+              <div className="flex shrink-0 flex-col items-end gap-1.5">
                 <p className={`text-[15px] font-extrabold ${credit ? 'text-emerald-300' : 'text-white'}`}>
                   {credit ? '+' : '−'}{money(t.amount, currency())}
                 </p>
-                <div className="mt-1"><Badge status={t.status} /></div>
+                <Badge status={t.status} />
+                <BillButton txn={t} />
               </div>
             </div>
           )

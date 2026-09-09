@@ -288,3 +288,7 @@ export const Volume2 = (p) => (
 export const VolumeX = (p) => (
   <I {...p}><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5H4z" /><path d="M15.5 9.5l5 5" /><path d="M20.5 9.5l-5 5" /></I>
 )
+
+export const Share = (p) => (
+  <I {...p}><circle cx="6.5" cy="12" r="2.5" /><circle cx="17" cy="5.8" r="2.5" /><circle cx="17" cy="18.2" r="2.5" /><path d="M8.7 10.9l6-3.3M8.7 13.1l6 3.3" /></I>
+)

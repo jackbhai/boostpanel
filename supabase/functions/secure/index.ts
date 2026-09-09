@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     "broadcast.send": [60, 3], "balance.adjust": [60, 20], "admin.order_create": [60, 20],
     "admin.order_set": [60, 60], "referral.claim": [60, 10], "loyalty.convert": [60, 10],
     "account.delete_self": [300, 3], "review.create": [60, 20], "ticket.rate": [60, 20],
-    "gateway.test": [60, 10], "gateway.create": [60, 10], "gateway.check": [60, 30], "gateway.status": [60, 60],
+    "gateway.test": [60, 10], "gateway.create": [60, 10], "gateway.check": [60, 30], "gateway.status": [60, 60], "gateway.orders": [60, 15], "gateway.order_detail": [60, 30],
   };
   // S: server-side input hygiene (mirrors client clean())
   const S = (v: any, max = 2000) => String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/<\s*script/gi, "<blocked").replace(/javascript\s*:/gi, "blocked:").trim().slice(0, max);
@@ -644,6 +644,49 @@ Deno.serve(async (req) => {
         return j({ status: st });
       }
       return j({ status: "pending" });
+    }
+
+    /* ======= gateway.orders (admin) — local txns + live status for pendings ======= */
+    if (op === "gateway.orders") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const { data: txns } = await sb.from("transactions").select("*").eq("method", "jackbank").order("created_at", { ascending: false }).limit(100);
+      const rows = txns || [];
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      const ids = [...new Set(rows.map((t) => t.user_id))];
+      const { data: profs } = ids.length ? await sb.from("profiles").select("id,email").in("id", ids) : { data: [] };
+      const emap = Object.fromEntries(((profs as any[]) || []).map((pr) => [pr.id, pr.email]));
+      const canLive = !!(g?.api_key && g?.api_secret && g?.anon_key && g?.base_url);
+      const live: Record<string, any> = {};
+      if (canLive) {
+        await Promise.all(rows.filter((t) => t.status === "pending").slice(0, 15).map(async (t) => {
+          try {
+            const { data } = await jbRpc(g, "jb_gateway_verify", { p_api_key: g.api_key, p_api_secret: g.api_secret, p_order_ref: t.txn_ref });
+            live[t.id] = data?.ok
+              ? { status: data.status, amount: data.amount, currency: data.currency, paid_at: data.paid_at }
+              : { status: "unknown", error: data?.error || data?.message || "verify failed" };
+          } catch { live[t.id] = { status: "unknown", error: "unreachable" }; }
+        }));
+      }
+      return j({ txns: rows.map((t) => ({ ...t, email: emap[t.user_id] || t.user_id, gw: live[t.id] || null })) });
+    }
+
+    /* ======= gateway.order_detail (admin) — single live verify ======= */
+    if (op === "gateway.order_detail") {
+      if (!admin) return j({ error: "Forbidden" }, 403);
+      const { data: t } = await sb.from("transactions").select("*").eq("id", Number(b.txn_id)).single();
+      if (!t || t.method !== "jackbank") return j({ error: "Payment not found." }, 404);
+      const { data: u } = await sb.from("profiles").select("id,email,balance").eq("id", t.user_id).single();
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      let gw: any = null;
+      if (g?.api_key && g?.api_secret) {
+        try {
+          const { data } = await jbRpc(g, "jb_gateway_verify", { p_api_key: g.api_key, p_api_secret: g.api_secret, p_order_ref: t.txn_ref });
+          gw = data?.ok
+            ? { status: data.status, amount: data.amount, currency: data.currency, paid_at: data.paid_at }
+            : { status: "unknown", error: data?.error || data?.message || "verify failed" };
+        } catch { gw = { status: "unknown", error: "unreachable" }; }
+      }
+      return j({ txn: t, email: (u as any)?.email || t.user_id, gw });
     }
 
     return j({ error: "Unknown op: " + op }, 400);

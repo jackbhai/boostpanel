@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, toast } from '../../components/ui'
+import { BillButton } from '../../components/Bill'
 import { AlertCircle, BadgeIndianRupee, Bitcoin, CheckCircle2, Copy, CreditCard, ExternalLink, RefreshCw, Upload, Wallet, X } from '../../components/icons'
 import { gatewayCheck, gatewayCreate, gatewayStatus, requestTopup, uploadProof } from '../../lib/db'
 import { useStore } from '../../lib/store'
@@ -255,6 +256,9 @@ export default function AddFunds() {
                 +{money(gwPay.credited || gwPay.amount, currency())} added to your balance.
               </p>
               <p className="mt-1 font-mono text-[11px] text-white/35">{gwPay.order_ref}</p>
+              <div className="mt-3 flex justify-center">
+                <BillButton txn={{ id: gwPay.txn_id, method: 'jackbank', status: 'approved', amount: gwPay.amount, txn_ref: gwPay.order_ref, created_at: new Date().toISOString(), note: 'Jack Bank instant deposit' }} credited={gwPay.credited} />
+              </div>
               <Btn variant="ghost" onClick={cancelGw} className="mt-3 w-full !py-2 text-[13px]">Make another payment</Btn>
             </div>
           ) : ['refunded', 'failed', 'expired', 'timeout'].includes(gwState) ? (
