@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     "broadcast.send": [60, 3], "balance.adjust": [60, 20], "admin.order_create": [60, 20],
     "admin.order_set": [60, 60], "referral.claim": [60, 10], "loyalty.convert": [60, 10],
     "account.delete_self": [300, 3], "review.create": [60, 20], "ticket.rate": [60, 20],
-    "gateway.test": [60, 10], "gateway.create": [60, 10], "gateway.check": [60, 30], "gateway.status": [60, 60], "gateway.orders": [60, 15], "gateway.order_detail": [60, 30],
+    "gateway.test": [60, 10], "gateway.create": [60, 10], "gateway.check": [60, 30], "gateway.status": [60, 60], "gateway.orders": [60, 15], "gateway.order_detail": [60, 30], "gateway.mine": [60, 30], "gateway.reconcile": [60, 10],
   };
   // S: server-side input hygiene (mirrors client clean())
   const S = (v: any, max = 2000) => String(v ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/<\s*script/gi, "<blocked").replace(/javascript\s*:/gi, "blocked:").trim().slice(0, max);
@@ -687,6 +687,45 @@ Deno.serve(async (req) => {
         } catch { gw = { status: "unknown", error: "unreachable" }; }
       }
       return j({ txn: t, email: (u as any)?.email || t.user_id, gw });
+    }
+
+    /* ======= gateway.mine — my pending gateway payments (resume) ======= */
+    if (op === "gateway.mine") {
+      const { data: txns } = await sb.from("transactions").select("id,amount,status,txn_ref,created_at").eq("user_id", meId).eq("method", "jackbank").eq("status", "pending").order("created_at", { ascending: false }).limit(5);
+      return j({ txns: txns || [] });
+    }
+
+    /* ======= gateway.reconcile — auto-settle MY pending payments (no admin) ======= */
+    if (op === "gateway.reconcile") {
+      const { data: g } = await sb.from("gateway_config").select("*").eq("id", 1).single();
+      if (!g?.api_key || !g?.api_secret) return j({ settled: [] });
+      const { data: txns } = await sb.from("transactions").select("*").eq("user_id", meId).eq("method", "jackbank").eq("status", "pending").order("created_at", { ascending: true }).limit(10);
+      const settled: any[] = [];
+      for (const t of txns || []) {
+        try {
+          const { data } = await jbRpc(g, "jb_gateway_verify", { p_api_key: g.api_key, p_api_secret: g.api_secret, p_order_ref: t.txn_ref });
+          const st = data?.ok ? String(data.status) : "";
+          if (!data?.ok) {
+            if (data?.error && data.error !== "Order not found") settled.push({ id: t.id, status: "error" });
+            continue;
+          }
+          if (st === "paid") {
+            if (Number(data.amount) < Number(t.amount)) { settled.push({ id: t.id, status: "error" }); continue; }
+            const bonus = Math.min(100, Math.max(0, Number(cfg?.deposit_bonus_pct || 0)));
+            const credit = +(Number(t.amount) * (100 + bonus) / 100).toFixed(4);
+            const { data: u } = await sb.from("profiles").select("balance").eq("id", t.user_id).single();
+            await sb.from("profiles").update({ balance: Number(u?.balance || 0) + credit }).eq("id", t.user_id);
+            await sb.from("transactions").update({ status: "approved" }).eq("id", t.id);
+            await sb.from("notifications").insert({ user_id: t.user_id, title: "Deposit approved", body: `+${credit} via Jack Bank.` });
+            settled.push({ id: t.id, status: "paid", credited: credit });
+          } else if (["refunded", "failed", "expired"].includes(st)) {
+            await sb.from("transactions").update({ status: "rejected", note: `Jack Bank ${st}` }).eq("id", t.id);
+            await sb.from("notifications").insert({ user_id: t.user_id, title: "Jack Bank payment " + st, body: `Order ${t.txn_ref} was ${st}.` });
+            settled.push({ id: t.id, status: st });
+          }
+        } catch { /* stays pending — retried on next app open */ }
+      }
+      return j({ settled });
     }
 
     return j({ error: "Unknown op: " + op }, 400);

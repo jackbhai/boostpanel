@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Btn, Field, Input, PageHead, toast } from '../../components/ui'
 import { BillButton } from '../../components/Bill'
 import { AlertCircle, BadgeIndianRupee, Bitcoin, CheckCircle2, Copy, CreditCard, ExternalLink, RefreshCw, Upload, Wallet, X } from '../../components/icons'
-import { gatewayCheck, gatewayCreate, gatewayStatus, requestTopup, uploadProof } from '../../lib/db'
+import { gatewayCheck, gatewayCreate, gatewayMine, gatewayStatus, requestTopup, uploadProof } from '../../lib/db'
 import { useStore } from '../../lib/store'
 import { isValidUtr, upiQrDataUrl, upiUrl } from '../../lib/upi'
 import { sfx } from '../../lib/sound'
@@ -28,12 +28,19 @@ export default function AddFunds() {
   const [gwBusy, setGwBusy] = useState(false)
   const [gwPay, setGwPay] = useState(null)
   const [gwState, setGwState] = useState('idle')
+  const [gwPending, setGwPending] = useState([])
+  const [gwResumeBusy, setGwResumeBusy] = useState(null)
   const pollRef = useRef(null)
 
   useEffect(() => {
     gatewayStatus().then((r) => setGwOn(!!r?.enabled)).catch(() => {})
+    gatewayMine().then((r) => {
+      const list = r?.txns || []
+      setGwPending(list)
+      list.forEach((t, i) => setTimeout(() => resumeCheck(t.id), 2500 + i * 4000))
+    }).catch(() => {})
     return () => clearTimeout(pollRef.current)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopPoll = () => clearTimeout(pollRef.current)
 
@@ -95,6 +102,23 @@ export default function AddFunds() {
         toast('Still pending — complete the payment in the opened page.', 'info')
       }
     } catch (err) { toast(err.message, 'error') }
+  }
+
+  const resumeCheck = async (id) => {
+    setGwResumeBusy(id)
+    try {
+      const r = await gatewayCheck(id)
+      if (r.status === 'paid') {
+        setGwPending((l) => l.filter((t) => t.id !== id))
+        refreshProfile()
+        sfx('coin')
+        toast('Payment confirmed! Balance credited.')
+      } else if (['refunded', 'failed', 'expired'].includes(r.status)) {
+        setGwPending((l) => l.filter((t) => t.id !== id))
+        toast(`Payment ${r.status}.`, 'error')
+      }
+    } catch { /* stays in list — retry manually */ }
+    setGwResumeBusy(null)
   }
 
   const cancelGw = () => {
@@ -238,6 +262,21 @@ export default function AddFunds() {
       {activeMethod === 'JackBank' ? (
         <div className="mt-4">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/45">3 · Pay instantly</p>
+          {gwPending.length > 0 && !gwPay && (
+            <div className="card mb-3 space-y-2.5 border-amber-500/30 bg-amber-500/5 p-4">
+              <p className="text-[13px] font-bold text-amber-200">Payment in progress — auto-checking…</p>
+              {gwPending.map((t) => (
+                <div key={t.id} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-bold text-white">{money(t.amount, currency())}</p>
+                    <p className="truncate font-mono text-[11px] text-white/40">{t.txn_ref}</p>
+                  </div>
+                  <Btn variant="ghost" onClick={() => resumeCheck(t.id)} loading={gwResumeBusy === t.id} className="!px-3 !py-1.5 text-[12px]">Check now</Btn>
+                </div>
+              ))}
+              <p className="text-[11px] leading-relaxed text-white/40">Already paid? It credits automatically — even if you closed this page. Just reopen the app.</p>
+            </div>
+          )}
           {!gwPay ? (
             <div className="card space-y-3 p-4 text-center">
               <Wallet size={32} className="mx-auto text-violet-300" />
@@ -268,7 +307,7 @@ export default function AddFunds() {
                 {gwState === 'timeout' ? 'Timed out waiting' : `Payment ${gwState}`}
               </p>
               <p className="mt-1 text-[13px] text-white/55">
-                {gwState === 'timeout' ? 'If you already paid, tap check below or see Transactions.' : 'No money was taken. You can try again.'}
+                {gwState === 'timeout' ? 'If you already paid, it will auto-credit — just reopen the app. Or tap check below.' : 'No money was taken. You can try again.'}
               </p>
               <div className="mt-3 flex gap-2">
                 <Btn variant="ghost" onClick={checkGwNow} className="flex-1 !py-2 text-[13px]">Check again</Btn>

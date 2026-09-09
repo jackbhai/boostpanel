@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getCatalog, getProfile, getSessionUser, getSettings, logSecEvent, mfaAal, mfaVerifyLogin, mySessions, signIn, signOut, signUp, touchSession } from './db'
+import { gatewayReconcile, getCatalog, getProfile, getSessionUser, getSettings, logSecEvent, mfaAal, mfaVerifyLogin, mySessions, signIn, signOut, signUp, touchSession } from './db'
 import { deviceName } from './security'
 import { isConfigured } from './supabase'
 
@@ -44,6 +44,7 @@ export const useStore = create((set, get) => ({
         services: catalog.services || [],
         booted: true,
       })
+      if (profile) get()._reconcileGw()
     } catch {
       set({ booted: true })
     }
@@ -59,6 +60,7 @@ export const useStore = create((set, get) => ({
       }
       set({ user, profile })
       get()._postAuth(user)
+      get()._reconcileGw()
       return profile
     } finally {
       set({ authBusy: false })
@@ -72,11 +74,29 @@ export const useStore = create((set, get) => ({
       const user = await getSessionUser()
       const profile = user ? await getProfile(user.id).catch(() => null) : null
       set({ user, profile })
-      if (user) get()._postAuth(user)
+      if (user) { get()._postAuth(user); get()._reconcileGw() }
       return profile
     } finally {
       set({ authBusy: false })
     }
+  },
+
+  /** Silent auto-settle: stuck gateway payments credit themselves on app open. */
+  _reconcileGw: () => {
+    (async () => {
+      try {
+        const r = await gatewayReconcile().catch(() => null)
+        const paid = (r?.settled || []).filter((s) => s.status === 'paid')
+        if (!paid.length) return
+        const u = get().user
+        const fresh = u ? await getProfile(u.id).catch(() => null) : null
+        if (fresh) set({ profile: fresh })
+        const total = paid.reduce((a, s) => a + Number(s.credited || 0), 0)
+        const [{ toast }, { sfx }] = await Promise.all([import('../components/ui'), import('./sound')])
+        sfx('coin')
+        toast(`Payment confirmed! ${get().currency()}${Number(total.toFixed(2)).toLocaleString('en-IN')} added to wallet.`)
+      } catch { /* never blocks boot */ }
+    })()
   },
 
   /** Fire-and-forget security trail — never blocks auth UX. */
@@ -99,7 +119,7 @@ export const useStore = create((set, get) => ({
       const res = await signUp(email, password)
       if (res.needsVerification) return { needsVerification: true }
       set({ user: res.user, profile: res.profile })
-      if (res.user) get()._postAuth(res.user)
+      if (res.user) { get()._postAuth(res.user); get()._reconcileGw() }
       return res.profile
     } finally {
       set({ authBusy: false })
