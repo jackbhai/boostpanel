@@ -56,7 +56,7 @@ export function renderBill({
     ['Txn ID', txn.id ? `#${txn.id}` : '—'],
     ['Amount paid', txn.amountFmt || String(txn.amount ?? '—')],
   ]
-  const H = 1010 + rows.length * 0 // fixed generous height
+  const H = 840 // content-fit height
   const c = document.createElement('canvas')
   c.width = W
   c.height = H
