@@ -568,7 +568,7 @@ Deno.serve(async (req) => {
         if (data?.ok) return j({ working: true, ms });
         if (data?.error === "Order not found") return j({ working: true, ms });
         if (data?.error === "Invalid API credentials") return j({ working: false, ms, error: "Keys rejected — check API key + secret." });
-        return j({ working: false, ms, error: data?.error || "Unexpected gateway response." });
+        return j({ working: false, ms, error: data?.error || data?.message || "Unexpected gateway response." });
       } catch {
         return j({ working: false, error: "Gateway unreachable — check base URL / network." });
       }
@@ -591,7 +591,9 @@ Deno.serve(async (req) => {
         });
         if (!data?.ok) {
           if (data?.error === "Invalid API credentials") return j({ error: "Payment gateway is misconfigured. Contact support." }, 502);
-          return j({ error: data?.error || "Gateway order failed." }, 502);
+          const gwMsg = data?.error || data?.message || "";
+          if (/api[ -]?key|jwt|jws|unauthorized/i.test(gwMsg)) return j({ error: "Payment gateway connection keys are invalid. Contact support." }, 502);
+          return j({ error: gwMsg || "Gateway order failed." }, 502);
         }
         pay_url = data.order?.pay_url || "";
         if (!pay_url) return j({ error: "Gateway did not return a pay link." }, 502);
